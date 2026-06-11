@@ -1,0 +1,19 @@
+{
+  "name": "CHART - Incident History",
+  "short_name": "CHART",
+  "description": "Chronology & History of Alerts, Reporting and Tracking",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f8f8",
+  "theme_color": "#0f766e",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "icons/chart.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
