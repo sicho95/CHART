@@ -867,8 +867,10 @@ function reportPrintCss() {
       align-items: start;
       padding: 18px 20px;
       border-radius: 18px;
-      background: linear-gradient(135deg, #eef5fd 0%, #f7fbff 55%, #ffffff 100%);
-      border: 1px solid #d9e6f4;
+      background:
+        radial-gradient(circle at top right, rgba(87, 168, 255, 0.16), transparent 34%),
+        linear-gradient(135deg, #edf4fb 0%, #f7fbff 55%, #ffffff 100%);
+      border: 1px solid #d4e2f0;
     }
     .report-eyebrow {
       margin: 0 0 8px;
@@ -891,7 +893,7 @@ function reportPrintCss() {
     .report-severity {
       padding: 8px 12px;
       border-radius: 999px;
-      background: #102033;
+      background: linear-gradient(135deg, #17365c 0%, #245f9d 100%);
       color: #fff;
       font-size: 10px;
       font-weight: 700;
@@ -905,8 +907,8 @@ function reportPrintCss() {
     .report-stat {
       padding: 14px;
       border-radius: 14px;
-      background: #f5f9fd;
-      border: 1px solid #dfe8f2;
+      background: linear-gradient(180deg, #f5f9fd 0%, #ffffff 100%);
+      border: 1px solid #d9e5f0;
       display: grid;
       gap: 4px;
     }
@@ -928,8 +930,8 @@ function reportPrintCss() {
     .report-grid > div, .report-dual article, .report-note, .report-checkpoint {
       padding: 14px;
       border-radius: 14px;
-      border: 1px solid #dfe8f2;
-      background: #ffffff;
+      border: 1px solid #dbe6f0;
+      background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
     }
     .report-section {
       display: grid;
@@ -955,16 +957,17 @@ function reportPrintCss() {
       position: relative;
       display: grid;
       gap: 10px;
-      padding-left: 16px;
+      padding-left: 18px;
     }
     .report-timeline::before {
       content: "";
       position: absolute;
-      left: 6px;
+      left: 7px;
       top: 4px;
       bottom: 4px;
-      width: 2px;
-      background: linear-gradient(180deg, #5ca4f4 0%, #d9e6f4 100%);
+      width: 3px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, #2b85e4 0%, #8ec0ff 62%, #d9e6f4 100%);
     }
     .report-timeline-item {
       display: grid;
@@ -983,16 +986,16 @@ function reportPrintCss() {
       position: relative;
       padding: 14px 16px;
       border-radius: 14px;
-      border: 1px solid #dfe8f2;
-      background: #fbfdff;
+      border: 1px solid #d8e4ef;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
     }
     .report-timeline-body::before {
       content: "";
       position: absolute;
-      left: -17px;
+      left: -18px;
       top: 18px;
-      width: 8px;
-      height: 8px;
+      width: 10px;
+      height: 10px;
       border-radius: 50%;
       background: #2b85e4;
       box-shadow: 0 0 0 4px #eef5fd;
@@ -1001,7 +1004,9 @@ function reportPrintCss() {
     .report-timeline-body span { color: #617a95; font-size: 11px; }
     .report-checkpoints { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .report-checkpoint {
-      background: linear-gradient(180deg, #ffffff 0%, #f9fbfe 100%);
+      background:
+        linear-gradient(180deg, #ffffff 0%, #f9fbfe 100%);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.5);
     }
     .report-checkpoint-top {
       display: flex;

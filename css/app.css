@@ -84,6 +84,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .top-actions { display: flex; gap: 8px; align-items: center; }
 
 .main { min-width: 0; padding: 14px 14px 86px; }
+.main > * { min-width: 0; }
 .workspace, .split, .page-grid { display: grid; gap: 14px; }
 .workspace { max-width: 1760px; margin: 0 auto; }
 .workspace-incidents { max-width: none; }
@@ -321,7 +322,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .incident-detail-top, .incident-bottom-grid { display: grid; gap: 14px; }
 .incident-timeline-region { display: grid; gap: 12px; min-height: 0; grid-template-rows: auto minmax(0, 1fr); }
 .incident-timeline-scroll { min-height: 280px; grid-auto-rows: max-content; align-content: start; }
-.incident-bottom-grid { border-top: 1px solid var(--line); }
+.incident-bottom-grid { border-top: 1px solid var(--line); align-content: start; }
 .incident-subpanel { display: grid; gap: 10px; min-height: 0; }
 .incident-subpanel-scroll { min-height: 0; align-content: start; grid-auto-rows: max-content; }
 .attachment-preview {
@@ -376,8 +377,10 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .offline { padding: 8px 14px; background: color-mix(in srgb, var(--info) 14%, var(--panel)); color: var(--text); font-size: 13px; border-bottom: 1px solid var(--line); }
 
 .report-preview {
-  background: linear-gradient(180deg, var(--panel-3), color-mix(in srgb, var(--panel) 92%, transparent));
-  padding: 20px;
+  background:
+    radial-gradient(circle at top right, rgba(43, 133, 228, 0.14), transparent 24%),
+    linear-gradient(180deg, #edf4fb 0%, #f8fbfe 58%, #eef3f8 100%);
+  padding: 26px;
 }
 .report {
   display: grid;
@@ -386,6 +389,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   background: #fff;
   color: #102033;
   border-radius: 18px;
+  box-shadow: 0 18px 44px rgba(18, 45, 80, 0.08);
 }
 .report-hero {
   display: grid;
@@ -448,13 +452,69 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   padding: 16px 18px;
   border-radius: 16px;
   border: 1px solid #dfe8f2;
-  background: #fbfdff;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
 }
 .report-timeline-body p { margin: 8px 0 6px; }
 .report-timeline-body span { color: #617a95; font-size: 12px; }
 .report-checkpoint-top { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 
-@media (min-width: 780px) {
+@media (max-width: 1023px) {
+  .topbar {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+  .brand {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  .brand-title { font-size: 17px; }
+  .brand-subtitle {
+    max-width: 100%;
+    font-size: 11px;
+  }
+  .top-actions {
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .top-actions .btn {
+    min-height: 42px;
+    padding: 8px 10px;
+  }
+  .top-actions .btn.incident span { white-space: nowrap; }
+  .main {
+    padding: 12px 12px 84px;
+    width: 100%;
+  }
+  .workspace,
+  .split,
+  .page-grid,
+  .workspace-incidents {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .workspace-incidents {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .incident-sidebar,
+  .incident-detail-panel {
+    min-height: auto;
+    height: auto;
+    overflow: visible;
+  }
+  .incident-detail-shell,
+  .incident-sidebar-shell,
+  .incident-list,
+  .incident-timeline-scroll,
+  .incident-subpanel-scroll {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+  .incident-bottom-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (min-width: 1024px) {
   .layout { grid-template-columns: 220px 1fr; grid-template-rows: auto 1fr; }
   .topbar { grid-column: 1 / -1; padding: 12px 20px; }
   .rail { display: block; grid-row: 2; }
