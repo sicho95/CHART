@@ -12,6 +12,7 @@ import {
 } from "./domain.js";
 
 const HOT_PREFIX = "chart:";
+const bannerState = JSON.parse(sessionStorage.getItem(`${HOT_PREFIX}banners`) || "{}");
 
 export const state = {
   route: localStorage.getItem(`${HOT_PREFIX}route`) || "incidents",
@@ -30,6 +31,12 @@ export const state = {
   online: navigator.onLine,
   persistentStorage: null,
   quota: null,
+  installPromptAvailable: false,
+  dismissedBanners: {
+    offline: Boolean(bannerState.offline),
+    storage: Boolean(bannerState.storage),
+    install: Boolean(bannerState.install)
+  },
   projects: [],
   contacts: [],
   incidents: [],
@@ -108,6 +115,23 @@ export function setRoute(route) {
 export function setTheme(theme) {
   state.theme = theme;
   localStorage.setItem(`${HOT_PREFIX}theme`, theme);
+  emit();
+}
+
+export function setInstallPromptAvailable(value) {
+  state.installPromptAvailable = Boolean(value);
+  emit();
+}
+
+export function dismissBanner(name) {
+  state.dismissedBanners[name] = true;
+  sessionStorage.setItem(`${HOT_PREFIX}banners`, JSON.stringify(state.dismissedBanners));
+  emit();
+}
+
+export function showBanner(name) {
+  state.dismissedBanners[name] = false;
+  sessionStorage.setItem(`${HOT_PREFIX}banners`, JSON.stringify(state.dismissedBanners));
   emit();
 }
 
@@ -276,7 +300,7 @@ export async function saveEvent(form, files = []) {
       createdAt,
       message: form.message || existing.message,
       modifiedAt: changed ? nowIso() : existing.modifiedAt || null,
-      modifiedBy: changed ? author : existing.modifiedBy || ""
+      modifiedBy: changed ? defaultModifierName(incident.projectId, author) : existing.modifiedBy || ""
     };
     await put("events", event);
     if (files.length) {
@@ -353,7 +377,7 @@ export async function saveCheckpoint(form, freeze = false, files = []) {
     createdAt: existing?.createdAt || nowIso(),
     updatedAt: nowIso(),
     modifiedAt: changed ? nowIso() : existing?.modifiedAt || null,
-    modifiedBy: changed ? (form.author || existing?.author || incident.declaredBy || "CHART") : existing?.modifiedBy || ""
+    modifiedBy: changed ? defaultModifierName(incident.projectId, form.author || existing?.author || incident.declaredBy || "CHART") : existing?.modifiedBy || ""
   };
   incident.checkpointIds = [...new Set([...(incident.checkpointIds || []), checkpoint.id])];
   incident.nextCheckpointAt = checkpoint.nextCheckpointAt || incident.nextCheckpointAt;
@@ -508,6 +532,66 @@ export async function resetWithSeed() {
   emit();
 }
 
+export async function resetWorkspace() {
+  await clearAll();
+  Object.keys(localStorage)
+    .filter((key) => key.startsWith(HOT_PREFIX))
+    .forEach((key) => localStorage.removeItem(key));
+  sessionStorage.removeItem(`${HOT_PREFIX}banners`);
+  await loadAll();
+  state.route = "incidents";
+  state.selectedProjectId = null;
+  state.selectedIncidentId = null;
+  state.search = "";
+  state.filters = { projectId: "", severity: "", status: "", type: "", from: "", to: "" };
+  emit();
+}
+
+export async function ensureIncidentReport(incidentId) {
+  const incident = state.incidents.find((item) => item.id === incidentId);
+  if (!incident) return null;
+  const closure = state.closures.find((item) => item.id === incident.closureId) || {
+    id: incident.closureId || "",
+    incidentId: incident.id,
+    projectId: incident.projectId,
+    closedAt: incident.closedAt || "",
+    resolutionSummary: incident.currentSummary || "",
+    rootCauseKnown: false,
+    rootCauseSummary: "",
+    correctiveActions: "",
+    postIncidentReviewRequired: false,
+    finalSummary: incident.currentSummary || incident.businessImpact || "",
+    generatedReportId: null,
+    createdAt: incident.createdAt
+  };
+  const existing = state.reports.find((item) => item.id === closure.generatedReportId) || state.reports.find((item) => item.incidentId === incident.id);
+  const report = buildClosureReport({
+    incident,
+    project: state.projects.find((project) => project.id === incident.projectId),
+    contacts: state.contacts,
+    events: state.events.filter((event) => event.incidentId === incident.id),
+    checkpoints: state.checkpoints.filter((checkpoint) => checkpoint.incidentId === incident.id),
+    closure,
+    attachments: state.attachments.filter((attachment) =>
+      attachment.ownerId === incident.id
+      || state.events.some((event) => event.incidentId === incident.id && event.id === attachment.ownerId)
+      || state.checkpoints.some((checkpoint) => checkpoint.incidentId === incident.id && checkpoint.id === attachment.ownerId)
+    ),
+    reportId: existing?.id
+  });
+  await put("reports", report);
+  if (incident.closureId) {
+    const storedClosure = state.closures.find((item) => item.id === incident.closureId);
+    if (storedClosure && storedClosure.generatedReportId !== report.id) {
+      storedClosure.generatedReportId = report.id;
+      await put("closures", storedClosure);
+    }
+  }
+  await loadAll();
+  emit();
+  return state.reports.find((item) => item.id === report.id) || report;
+}
+
 export function lastExportAt() {
   return localStorage.getItem(`${HOT_PREFIX}lastExportAt`);
 }
@@ -555,4 +639,8 @@ function eventChanged(existing, form, author, createdAt, kind) {
     existing.kind !== kind,
     existing.message !== (form.message || existing.message)
   ].some(Boolean);
+}
+
+function defaultModifierName(projectId, fallback) {
+  return state.contacts.find((contact) => contact.projectId === projectId && contact.isDefaultAuthor)?.fullName || fallback || "CHART";
 }

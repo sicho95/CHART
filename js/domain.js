@@ -185,106 +185,190 @@ export function makeSeedData() {
   return { projects: [project], contacts, incidents: [incident], events, checkpoints, closures: [], reports: [], attachments: [], syncQueue: [] };
 }
 
-export function buildClosureReport({ incident, project, contacts, events, checkpoints, closure }) {
+export function buildClosureReport({ incident, project, contacts, events, checkpoints, closure, attachments = [], reportId = "" }) {
   const owner = contacts.find((contact) => contact.id === incident.ownerContactId);
   const frozen = checkpoints
     .filter((checkpoint) => checkpoint.status === "frozen")
     .sort((a, b) => new Date(a.heldAt || a.updatedAt) - new Date(b.heldAt || b.updatedAt));
-  const orderedEvents = [...events].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const eventEntries = [...events]
+    .filter((event) => event.kind !== "checkpoint_frozen")
+    .map((event) => ({
+      type: "event",
+      at: event.createdAt,
+      title: kindLabel(event.kind),
+      body: event.message,
+      author: event.author || "CHART",
+      modifiedAt: event.modifiedAt || "",
+      modifiedBy: event.modifiedBy || "",
+      attachments: (event.attachmentIds || []).map((id) => attachments.find((attachment) => attachment.id === id)).filter(Boolean)
+    }));
+  const checkpointEntries = frozen.map((checkpoint) => ({
+    type: "checkpoint",
+    at: checkpoint.heldAt || checkpoint.updatedAt,
+    title: "Point figé",
+    body: checkpoint.situationSummary || "Point sans synthèse",
+    author: checkpoint.author || "CHART",
+    modifiedAt: checkpoint.modifiedAt || "",
+    modifiedBy: checkpoint.modifiedBy || "",
+    mode: checkpoint.mode || "Point",
+    attachments: attachments.filter((attachment) => attachment.ownerId === checkpoint.id)
+  }));
+  const orderedEntries = [...eventEntries, ...checkpointEntries].sort((a, b) => new Date(a.at) - new Date(b.at));
   const firstFrozen = frozen[0];
   const closedAt = closure.closedAt || incident.closedAt || nowIso();
   const severityLabel = String(incident.severity || "").toUpperCase();
+  const statusLabel = incident.status === "clos" ? "clos" : incident.status.replace("_", " ");
+  const reportAttachments = attachments
+    .filter((attachment) => attachment.scope === "incident" && attachment.ownerId === incident.id)
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const severityAccent = reportSeverityAccent(incident.severity);
   return {
-    id: id("rep"),
+    id: reportId || id("rep"),
     incidentId: incident.id,
     projectId: incident.projectId,
     createdAt: nowIso(),
-    title: `Rapport de clôture - ${incident.title}`,
+    title: `${incident.status === "clos" ? "Rapport de clôture" : "Rapport incident"} - ${incident.title}`,
     html: `
       <article class="report">
-        <header class="report-hero">
-          <div>
-            <p class="report-eyebrow">CHART incident closure report</p>
-            <h1>${escapeHtml(incident.title)}</h1>
-            <p class="report-summary">${escapeHtml(closure.finalSummary)}</p>
-          </div>
-          <div class="report-severity">${escapeHtml(severityLabel)}</div>
-        </header>
-        <section class="report-dashboard">
-          <article class="report-stat">
-            <span class="report-stat-label">Projet</span>
-            <strong>${escapeHtml(project?.name || "Non renseigné")}</strong>
-            <span>${escapeHtml(project?.environment || "Environnement non renseigné")}</span>
-          </article>
-          <article class="report-stat">
-            <span class="report-stat-label">Durée totale</span>
-            <strong>${formatDuration(incident.declaredAt, closedAt)}</strong>
-            <span>Déclaré ${formatDate(incident.declaredAt)}</span>
-          </article>
-          <article class="report-stat">
-            <span class="report-stat-label">Prise en compte</span>
-            <strong>${firstFrozen ? formatDuration(incident.declaredAt, firstFrozen.heldAt || firstFrozen.updatedAt) : "n/a"}</strong>
-            <span>${firstFrozen ? `Premier point figé ${formatDate(firstFrozen.heldAt || firstFrozen.updatedAt)}` : "Aucun point figé"}</span>
-          </article>
-          <article class="report-stat">
-            <span class="report-stat-label">Résolution</span>
-            <strong>${formatDate(closedAt)}</strong>
-            <span>Pilote ${escapeHtml(owner?.fullName || "Non renseigné")}</span>
-          </article>
-        </section>
-        <section class="report-grid">
-          <div><strong>Déclaré par</strong><br>${escapeHtml(incident.declaredBy)}</div>
-          <div><strong>Pilote</strong><br>${escapeHtml(owner?.fullName || "Non renseigné")}</div>
-          <div><strong>Gravité</strong><br>${escapeHtml(incident.severity)}</div>
-          <div><strong>Statut final</strong><br>clos</div>
-        </section>
-        <section class="report-section">
-          <h2>Impacts</h2>
-          <div class="report-dual">
-            <article><h3>Métier</h3><p>${escapeHtml(incident.businessImpact)}</p></article>
-            <article><h3>Technique</h3><p>${escapeHtml(incident.technicalImpact || "Non renseigné")}</p></article>
-          </div>
-        </section>
-        <section class="report-section">
-          <h2>Résolution et causes</h2>
-          <div class="report-dual">
-            <article><h3>Résolution</h3><p>${escapeHtml(closure.resolutionSummary)}</p></article>
-            <article><h3>Cause</h3><p><strong>${closure.rootCauseKnown ? "Cause connue" : "Cause non confirmée"}</strong></p><p>${escapeHtml(closure.rootCauseSummary || "Non renseigné")}</p></article>
-          </div>
-          <article class="report-note"><strong>Actions correctives</strong><p>${escapeHtml(closure.correctiveActions || "Non renseigné")}</p></article>
-        </section>
-        <section class="report-section">
-          <h2>Chronologie détaillée</h2>
-          <div class="report-timeline">
-            ${orderedEvents.map((event) => `
-              <article class="report-timeline-item">
-                <div class="report-timeline-time">${formatDate(event.createdAt)}</div>
-                <div class="report-timeline-body">
-                  <strong>${escapeHtml(kindLabel(event.kind))}</strong>
-                  <p>${escapeHtml(event.message)}</p>
-                  <span>${escapeHtml(event.author || "CHART")}</span>
-                </div>
-              </article>
-            `).join("")}
-          </div>
-        </section>
-        <section class="report-section">
-          <h2>Points intermédiaires figés</h2>
-          ${frozen.length ? `<div class="report-checkpoints">${frozen.map((checkpoint) => `
-            <article class="report-checkpoint">
-              <div class="report-checkpoint-top">
-                <strong>${formatDate(checkpoint.heldAt || checkpoint.updatedAt)}</strong>
-                <span>${escapeHtml(checkpoint.mode || "Point")}</span>
-              </div>
-              <p>${escapeHtml(checkpoint.situationSummary || "Point sans synthèse")}</p>
-              <p><strong>Reste à faire</strong> ${escapeHtml(checkpoint.remainingActions || "Non renseigné")}</p>
-              <p><strong>Blocages</strong> ${escapeHtml(checkpoint.blockersRisks || "Aucun")}</p>
+        <section class="report-page report-page-dashboard">
+          <header class="report-hero">
+            <div>
+              <p class="report-eyebrow">CHART incident report</p>
+              <h1>${escapeHtml(incident.title)}</h1>
+              <p class="report-summary">${escapeHtml(closure.finalSummary || incident.currentSummary || incident.businessImpact || "Synthèse non renseignée")}</p>
+            </div>
+            <div class="report-severity" style="${severityAccent}">${escapeHtml(severityLabel)}</div>
+          </header>
+          <section class="report-dashboard">
+            <article class="report-stat">
+              <span class="report-stat-label">Projet</span>
+              <strong>${escapeHtml(project?.name || "Non renseigné")}</strong>
+              <span>${escapeHtml(project?.environment || "Environnement non renseigné")}</span>
             </article>
-          `).join("")}</div>` : "<p>Aucun point figé.</p>"}
+            <article class="report-stat">
+              <span class="report-stat-label">Durée totale</span>
+              <strong>${formatDuration(incident.declaredAt, closedAt)}</strong>
+              <span>Déclaré ${formatDate(incident.declaredAt)}</span>
+            </article>
+            <article class="report-stat">
+              <span class="report-stat-label">Prise en compte</span>
+              <strong>${firstFrozen ? formatDuration(incident.declaredAt, firstFrozen.heldAt || firstFrozen.updatedAt) : "n/a"}</strong>
+              <span>${firstFrozen ? `Premier point figé ${formatDate(firstFrozen.heldAt || firstFrozen.updatedAt)}` : "Aucun point figé"}</span>
+            </article>
+            <article class="report-stat">
+              <span class="report-stat-label">Dernier statut</span>
+              <strong>${escapeHtml(statusLabel)}</strong>
+              <span>Pilote ${escapeHtml(owner?.fullName || "Non renseigné")}</span>
+            </article>
+          </section>
+          <section class="report-grid">
+            <div><strong>Déclaré par</strong><br>${escapeHtml(incident.declaredBy)}</div>
+            <div><strong>Pilote</strong><br>${escapeHtml(owner?.fullName || "Non renseigné")}</div>
+            <div><strong>Gravité</strong><br>${escapeHtml(incident.severity)}</div>
+            <div><strong>Statut</strong><br>${escapeHtml(statusLabel)}</div>
+          </section>
+          <section class="report-section">
+            <h2>Impacts</h2>
+            <div class="report-dual">
+              <article><h3>Métier</h3><p>${escapeHtml(incident.businessImpact)}</p></article>
+              <article><h3>Technique</h3><p>${escapeHtml(incident.technicalImpact || "Non renseigné")}</p></article>
+            </div>
+          </section>
+          <section class="report-section">
+            <h2>Résolution et causes</h2>
+            <div class="report-dual">
+              <article><h3>Résolution</h3><p>${escapeHtml(closure.resolutionSummary || incident.currentSummary || "Non renseigné")}</p></article>
+              <article><h3>Cause</h3><p><strong>${closure.rootCauseKnown ? "Cause connue" : "Cause non confirmée"}</strong></p><p>${escapeHtml(closure.rootCauseSummary || "Non renseigné")}</p></article>
+            </div>
+            <article class="report-note"><strong>Actions correctives</strong><p>${escapeHtml(closure.correctiveActions || "Non renseigné")}</p></article>
+          </section>
         </section>
+        <section class="report-page report-page-timeline">
+          <section class="report-section">
+            <h2>Chronologie détaillée</h2>
+            <div class="report-timeline">
+              ${orderedEntries.map((entry) => `
+                <article class="report-timeline-item">
+                  <div class="report-timeline-time">${formatDate(entry.at)}</div>
+                  <div class="report-timeline-body">
+                    <strong>${escapeHtml(entry.title)}</strong>
+                    <p>${escapeHtml(entry.body)}</p>
+                    <span>${escapeHtml(entry.author)}${entry.mode ? ` · ${escapeHtml(entry.mode)}` : ""}${entry.modifiedAt ? ` · modifié le ${escapeHtml(formatDate(entry.modifiedAt))} par ${escapeHtml(entry.modifiedBy || entry.author)}` : ""}</span>
+                    ${entry.attachments.length ? `<div class="report-attachment-chips">${entry.attachments.map((attachment) => reportAttachmentChip(attachment)).join("")}</div>` : ""}
+                  </div>
+                </article>
+              `).join("")}
+            </div>
+          </section>
+          <section class="report-section">
+            <h2>Points intermédiaires figés</h2>
+            ${frozen.length ? `<div class="report-checkpoints">${frozen.map((checkpoint) => `
+              <article class="report-checkpoint">
+                <div class="report-checkpoint-top">
+                  <strong>${formatDate(checkpoint.heldAt || checkpoint.updatedAt)}</strong>
+                  <span>${escapeHtml(checkpoint.mode || "Point")}</span>
+                </div>
+                <p>${escapeHtml(checkpoint.situationSummary || "Point sans synthèse")}</p>
+                <p><strong>Reste à faire</strong> ${escapeHtml(checkpoint.remainingActions || "Non renseigné")}</p>
+                <p><strong>Blocages</strong> ${escapeHtml(checkpoint.blockersRisks || "Aucun")}</p>
+                <p><strong>Auteur</strong> ${escapeHtml(checkpoint.author || "CHART")}${checkpoint.modifiedAt ? ` · modifié le ${escapeHtml(formatDate(checkpoint.modifiedAt))} par ${escapeHtml(checkpoint.modifiedBy || checkpoint.author || "CHART")}` : ""}</p>
+                ${attachments.filter((attachment) => attachment.ownerId === checkpoint.id).length ? `<div class="report-attachment-chips">${attachments.filter((attachment) => attachment.ownerId === checkpoint.id).map((attachment) => reportAttachmentChip(attachment)).join("")}</div>` : ""}
+              </article>
+            `).join("")}</div>` : "<p>Aucun point figé.</p>"}
+          </section>
+        </section>
+        ${reportAttachments.length ? `
+          <section class="report-page report-attachments-cover">
+            <section class="report-section">
+              <h2>Pièces jointes</h2>
+              <p>${reportAttachments.length} fichier(s) global(aux) rattaché(s) à l'incident.</p>
+            </section>
+          </section>
+          ${reportAttachments.map((attachment) => `
+            <section class="report-page report-attachment-page">
+              <article class="report-attachment-sheet">
+                <div class="report-attachment-visual">${reportAttachmentLarge(attachment)}</div>
+                <div class="report-attachment-caption">${escapeHtml(attachment.filename)} · ${escapeHtml(formatDate(attachment.createdAt))}</div>
+              </article>
+            </section>
+          `).join("")}
+        ` : ""}
       </article>
     `
   };
+}
+
+function reportSeverityAccent(severity) {
+  return {
+    critique: "background:#87271e;color:#fff;",
+    majeur: "background:#b63f30;color:#fff;",
+    significatif: "background:#b76a18;color:#fff;",
+    mineur: "background:#2565b4;color:#fff;"
+  }[severity] || "background:#17365c;color:#fff;";
+}
+
+function reportAttachmentChip(attachment) {
+  return `<article class="report-attachment-chip">
+    ${reportAttachmentThumb(attachment)}
+    <div class="report-attachment-chip-meta">
+      <strong>${escapeHtml(attachment.filename)}</strong>
+      <span>${escapeHtml(formatDate(attachment.createdAt))}</span>
+    </div>
+  </article>`;
+}
+
+function reportAttachmentThumb(attachment) {
+  if (!attachment?.mimeType?.startsWith("image/") || !attachment.blob) {
+    return `<div class="report-attachment-fallback">PJ</div>`;
+  }
+  return `<img class="report-attachment-thumb" src="${URL.createObjectURL(attachment.blob)}" alt="${escapeHtml(attachment.filename)}">`;
+}
+
+function reportAttachmentLarge(attachment) {
+  if (!attachment?.mimeType?.startsWith("image/") || !attachment.blob) {
+    return `<div class="report-attachment-fallback report-attachment-fallback-large">${escapeHtml(attachment.filename)}</div>`;
+  }
+  return `<img class="report-attachment-image" src="${URL.createObjectURL(attachment.blob)}" alt="${escapeHtml(attachment.filename)}">`;
 }
 
 function kindLabel(kind) {

@@ -5,11 +5,13 @@ import {
   createIncident,
   deleteAttachment,
   deleteContact,
+  dismissBanner,
   downloadExport,
+  ensureIncidentReport,
   lastExportAt,
   replaceFromImport,
   reopenIncident,
-  resetWithSeed,
+  resetWorkspace,
   saveCheckpoint,
   saveContact,
   saveEvent,
@@ -38,6 +40,7 @@ import {
 } from "./domain.js";
 
 let toastTimer;
+let bannerTimers = {};
 
 export function renderApp(root) {
   root.innerHTML = `
@@ -54,14 +57,39 @@ export function renderApp(root) {
       </header>
       <aside class="rail">${navMarkup("nav")}</aside>
       <main class="main">
-        ${state.online ? "" : `<div class="offline">Vous êtes hors ligne, les données restent disponibles localement.</div>`}
-        ${state.persistentStorage === false ? `<div class="storage-note">Le navigateur ne garantit pas encore le stockage persistant. Pensez à exporter régulièrement.</div>` : ""}
+        ${bannerMarkup()}
         ${routeMarkup()}
       </main>
       ${navMarkup("bottom-nav")}
     </div>
   `;
   bindEvents(root);
+  scheduleBannerAutoDismiss();
+}
+
+function bannerMarkup() {
+  const banners = [];
+  if (!state.online && !state.dismissedBanners.offline) {
+    banners.push(`<div class="notice offline"><span>Vous êtes hors ligne, les données restent disponibles localement.</span><button class="notice-close" data-action="dismiss-banner" data-banner="offline" aria-label="Fermer">${icon("i-x")}</button></div>`);
+  }
+  if (state.persistentStorage === false && !state.dismissedBanners.storage) {
+    banners.push(`<div class="notice storage-note"><span>Le navigateur ne garantit pas encore le stockage persistant. Pensez à exporter régulièrement.</span><button class="notice-close" data-action="dismiss-banner" data-banner="storage" aria-label="Fermer">${icon("i-x")}</button></div>`);
+  }
+  if (state.installPromptAvailable && !state.dismissedBanners.install) {
+    banners.push(`<div class="notice install-note"><span>Installer CHART comme application sur cet appareil.</span><div class="notice-actions"><button class="btn primary" data-action="install-pwa">Installer</button><button class="btn ghost" data-action="dismiss-banner" data-banner="install">Non merci</button></div></div>`);
+  }
+  return banners.join("");
+}
+
+function scheduleBannerAutoDismiss() {
+  clearTimeout(bannerTimers.offline);
+  clearTimeout(bannerTimers.storage);
+  if (!state.online && !state.dismissedBanners.offline) {
+    bannerTimers.offline = setTimeout(() => dismissBanner("offline"), 15000);
+  }
+  if (state.persistentStorage === false && !state.dismissedBanners.storage) {
+    bannerTimers.storage = setTimeout(() => dismissBanner("storage"), 15000);
+  }
 }
 
 function navMarkup(className) {
@@ -138,14 +166,13 @@ function incidentDetail(incident) {
   const checkpoints = state.checkpoints.filter((checkpoint) => checkpoint.incidentId === incident.id);
   const timelineEntries = incidentTimelineEntries(incident, events, checkpoints);
   const closure = state.closures.find((item) => item.id === incident.closureId);
-  const report = state.reports.find((item) => item.id === closure?.generatedReportId);
   const attachments = incidentLevelAttachments(incident);
   const frozenPoints = checkpoints.filter((item) => item.status === "frozen");
   const draftPoints = checkpoints.filter((item) => item.status === "draft");
   const isClosed = incident.status === "clos";
 
   return `
-    <div class="incident-detail-shell">
+    <div class="incident-detail-shell" style="--timeline-accent:${severityColor(incident.severity)}">
       <div class="detail-header incident-detail-header">
         <h1 class="detail-title">${escapeHtml(incident.title)}</h1>
         <div class="badges">
@@ -160,7 +187,7 @@ function incidentDetail(incident) {
           <button class="btn" data-action="notify" data-incident="${incident.id}" ${isClosed ? "disabled" : ""}>Marquer avertis</button>
           <label class="btn ${isClosed ? "disabled-label" : ""}"><input type="file" hidden multiple data-file-attachments="${incident.id}" ${isClosed ? "disabled" : ""}>Ajouter fichier</label>
           ${isClosed ? `<button class="btn primary" data-action="reopen" data-incident="${incident.id}">Réouvrir</button>` : `<button class="btn success" data-action="close" data-incident="${incident.id}">Clôturer</button>`}
-          ${report ? `<button class="btn" data-action="show-report" data-report="${report.id}">Voir rapport</button>` : ""}
+          <button class="btn" data-action="show-report" data-incident="${incident.id}">Voir rapport</button>
         </div>
       </div>
       <div class="incident-detail-top panel-pad">
@@ -321,7 +348,7 @@ function projectsPage() {
       <div class="panel-header"><div><h2 class="panel-title">${escapeHtml(selected.name)}</h2><div class="panel-subtitle">${escapeHtml(selected.description || "Configuration projet")}</div></div><button class="btn" data-action="project" data-project="${selected.id}">Modifier</button></div>
       <div class="panel-pad page-grid">
         <section><h3 class="panel-title">Référentiels</h3><p class="muted">Types: ${selected.incidentTypes.join(", ")}</p><p class="muted">Gravités: ${selected.severityLevels.join(", ")}</p><p class="muted">Statuts: ${selected.statusOptions.map(labelStatus).join(", ")}</p></section>
-        <section><div class="card-top"><h3 class="panel-title">Contacts</h3><button class="btn" data-action="contact" data-project="${selected.id}">${icon("i-plus")}Contact</button></div><div class="cards">${contacts.filter((contact) => contact.isActive !== false).map(contactCard).join("") || empty("Aucun contact projet.")}</div></section>
+        <section><div class="card-top contacts-head"><h3 class="panel-title">Contacts</h3><button class="btn" data-action="contact" data-project="${selected.id}">${icon("i-plus")}Contact</button></div><div class="cards">${contacts.filter((contact) => contact.isActive !== false).map(contactCard).join("") || empty("Aucun contact projet.")}</div></section>
       </div>` : `<div class="detail-empty">Créez un premier projet pour commencer.</div>`}</section>
   </div>`;
 }
@@ -351,7 +378,7 @@ function exportPage() {
         <div class="kpi"><span class="kpi-value">${state.attachments.length}</span><span class="kpi-label">Pièces jointes</span></div>
       </div>
       <p class="muted">Dernier export: ${lastExportAt() ? formatDate(lastExportAt()) : "jamais"} · ${quota}</p>
-      <div class="detail-actions"><button class="btn primary" data-action="export-json">Exporter JSON</button><label class="btn danger"><input type="file" hidden accept="application/json" data-import-json>Importer et remplacer</label><button class="btn" data-action="reset-seed">Réinitialiser exemple</button></div>
+      <div class="detail-actions"><button class="btn primary" data-action="export-json">Exporter JSON</button><label class="btn danger"><input type="file" hidden accept="application/json" data-import-json>Importer et remplacer</label><button class="btn" data-action="reset-workspace">Réinitialiser</button></div>
     </section>
     <section class="panel panel-pad">
       <h2 class="panel-title">Avertissement import</h2>
@@ -405,8 +432,10 @@ function handleAction(button) {
   if (action === "contact-edit") return openContactModal(contactById(button.dataset.contact)?.projectId, button.dataset.contact);
   if (action === "contact-delete" && confirm("Supprimer ce contact de la liste active ?")) return deleteContact(button.dataset.contact).then(() => showToast("Contact supprimé."));
   if (action === "export-json") return downloadExport().then(() => showToast("Export JSON généré."));
-  if (action === "reset-seed" && confirm("Réinitialiser avec l'exemple et effacer les données locales ?")) return resetWithSeed().then(() => showToast("Exemple restauré."));
-  if (action === "show-report") return openReportModal(button.dataset.report);
+  if (action === "reset-workspace" && confirm("Réinitialiser complètement CHART et effacer toutes les données locales ?")) return resetWorkspace().then(() => showToast("Base locale réinitialisée."));
+  if (action === "show-report") return openReportModal(button.dataset.incident);
+  if (action === "dismiss-banner") return dismissBanner(button.dataset.banner);
+  if (action === "install-pwa") return window.dispatchEvent(new CustomEvent("chart-install-request"));
   if (action === "download-attachment") return downloadAttachment(button.dataset.attachment);
   if (action === "delete-attachment" && confirm("Supprimer cette pièce jointe ?")) return deleteAttachment(button.dataset.attachment).then(() => showToast("Pièce jointe supprimée."));
 }
@@ -599,8 +628,8 @@ function openContactModal(projectId, contactId = "") {
   });
 }
 
-function openReportModal(reportId) {
-  const report = state.reports.find((item) => item.id === reportId);
+async function openReportModal(incidentId) {
+  const report = await ensureIncidentReport(incidentId);
   openModal(report?.title || "Rapport", `<div class="report-preview">${report?.html || ""}</div>`, null, [
     { label: "Imprimer", variant: "primary", attrs: `data-report-print="${report?.id || ""}"` }
   ], "modal-report");
@@ -912,6 +941,15 @@ function kindLabel(kind) {
   }[kind] || kind;
 }
 
+function severityColor(severity) {
+  return {
+    critique: "var(--danger)",
+    majeur: "var(--danger)",
+    significatif: "var(--warning)",
+    mineur: "var(--info)"
+  }[severity] || "var(--primary)";
+}
+
 function incidentLevelAttachments(incident) {
   const ownerIds = new Set([incident.id].filter(Boolean));
   return state.attachments
@@ -1033,16 +1071,16 @@ function downloadAttachment(attachmentId) {
 function printReport(reportId) {
   const report = state.reports.find((item) => item.id === reportId);
   if (!report) return;
-  const printWindow = window.open("", "_blank", "noopener,noreferrer");
-  if (!printWindow) {
-    showToast("Le navigateur bloque la fenêtre d'impression.");
-    return;
-  }
-  printWindow.document.write(`
+  const frame = document.createElement("iframe");
+  frame.className = "print-frame";
+  frame.setAttribute("aria-hidden", "true");
+  document.body.appendChild(frame);
+  frame.srcdoc = `
     <!doctype html>
     <html lang="fr">
       <head>
         <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>${escapeHtml(report.title)}</title>
         <style>${reportPrintCss()}</style>
       </head>
@@ -1050,42 +1088,36 @@ function printReport(reportId) {
         ${report.html}
       </body>
     </html>
-  `);
-  printWindow.document.close();
-  printWindow.focus();
-  setTimeout(() => printWindow.print(), 250);
+  `;
+  frame.onload = () => {
+    const win = frame.contentWindow;
+    if (!win) {
+      frame.remove();
+      return;
+    }
+    const cleanup = () => setTimeout(() => frame.remove(), 400);
+    win.addEventListener("afterprint", cleanup, { once: true });
+    win.focus();
+    setTimeout(() => {
+      try {
+        win.print();
+      } catch {
+        cleanup();
+        showToast("L'impression n'a pas pu être lancée.");
+      }
+    }, 180);
+  };
 }
 
 function reportPrintCss() {
   return `
     @page { size: A4; margin: 12mm; }
     html, body { margin: 0; background: #ffffff; color: #102033; font: 14px/1.5 "Segoe UI", Arial, sans-serif; }
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0 0 auto 0;
-      height: 12mm;
-      background: linear-gradient(90deg, #0f2743 0%, #245f9d 52%, #57a8ff 100%);
-    }
-    .report {
-      max-width: 100%;
-      margin: 0 auto;
-      padding: 18mm 8mm 12mm;
-      display: grid;
-      gap: 18px;
-      position: relative;
-    }
-    .report::after {
-      content: "CHART";
-      position: absolute;
-      top: 0;
-      right: 8mm;
-      color: #ffffff;
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: .16em;
-      transform: translateY(-8.7mm);
-    }
+    .report { display: grid; gap: 0; }
+    .report-page { break-after: page; max-width: 100%; }
+    .report-page:last-child { break-after: auto; }
+    .report-page-dashboard { display: grid; gap: 18px; }
+    .report-page-timeline { display: grid; gap: 16px; page-break-before: always; }
     .report-hero {
       display: grid;
       grid-template-columns: 1fr auto;
@@ -1119,8 +1151,6 @@ function reportPrintCss() {
     .report-severity {
       padding: 8px 12px;
       border-radius: 999px;
-      background: linear-gradient(135deg, #17365c 0%, #245f9d 100%);
-      color: #fff;
       font-size: 10px;
       font-weight: 700;
       letter-spacing: .12em;
@@ -1242,9 +1272,86 @@ function reportPrintCss() {
       font-size: 12px;
       color: #375372;
     }
+    .report-attachment-chips {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .report-attachment-chip {
+      display: grid;
+      grid-template-columns: 68px 1fr;
+      gap: 10px;
+      align-items: center;
+      padding: 8px;
+      border-radius: 12px;
+      background: #f5f9fd;
+      border: 1px solid #dbe6f0;
+    }
+    .report-attachment-thumb {
+      width: 68px;
+      height: 68px;
+      object-fit: cover;
+      border-radius: 10px;
+      border: 1px solid #dbe6f0;
+      display: block;
+    }
+    .report-attachment-chip-meta strong,
+    .report-attachment-chip-meta span {
+      display: block;
+    }
+    .report-attachment-chip-meta span {
+      color: #617a95;
+      font-size: 11px;
+    }
+    .report-attachments-cover { page-break-before: always; }
+    .report-attachment-page { page-break-before: always; min-height: calc(297mm - 24mm); display: grid; }
+    .report-attachment-sheet {
+      min-height: calc(297mm - 24mm);
+      display: grid;
+      grid-template-rows: 1fr auto;
+      gap: 10px;
+    }
+    .report-attachment-visual {
+      min-height: 0;
+      border: 1px solid #dbe6f0;
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      background: #f8fbff;
+    }
+    .report-attachment-image {
+      width: 100%;
+      height: calc(297mm - 66mm);
+      object-fit: contain;
+      display: block;
+      background: #ffffff;
+    }
+    .report-attachment-fallback {
+      min-height: 68px;
+      display: grid;
+      place-items: center;
+      padding: 12px;
+      border-radius: 10px;
+      background: #eef5fd;
+      color: #375372;
+      font-weight: 700;
+      text-align: center;
+    }
+    .report-attachment-fallback-large {
+      width: 100%;
+      height: calc(297mm - 66mm);
+      border-radius: 0;
+      font-size: 20px;
+    }
+    .report-attachment-caption {
+      font-size: 12px;
+      color: #617a95;
+      text-align: center;
+    }
     @media print {
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .report-timeline-item, .report-checkpoint, .report-dual article, .report-stat, .report-grid > div { break-inside: avoid; }
+      .report-timeline-item, .report-checkpoint, .report-dual article, .report-stat, .report-grid > div, .report-attachment-sheet { break-inside: avoid; }
     }
   `;
 }
