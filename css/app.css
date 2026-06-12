@@ -40,7 +40,7 @@
 }
 
 * { box-sizing: border-box; }
-html { min-height: 100%; background: var(--bg); }
+html { min-height: 100%; background: var(--bg); touch-action: manipulation; }
 body {
   margin: 0;
   min-height: 100vh;
@@ -49,6 +49,7 @@ body {
   font-size: 16px;
   letter-spacing: 0;
   overflow-x: hidden;
+  touch-action: manipulation;
 }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
@@ -102,11 +103,14 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   left: 0;
   right: 0;
   bottom: 0;
+  width: 100vw;
+  max-width: 100%;
   z-index: 30;
-  padding: 2px 8px calc(2px + env(safe-area-inset-bottom));
+  padding: 2px 8px 2px;
   background: color-mix(in srgb, var(--panel) 94%, transparent);
   border-top: 1px solid var(--line);
   backdrop-filter: blur(14px);
+  align-items: center;
 }
 
 .nav-button {
@@ -121,6 +125,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   gap: 8px;
   padding: 8px 10px;
   flex: 1;
+  min-width: 0;
 }
 .nav-button.active {
   color: var(--primary-strong);
@@ -135,6 +140,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .bottom-nav .nav-button span {
   font-size: 13px;
   font-weight: 650;
+  white-space: nowrap;
 }
 
 .panel {
@@ -368,7 +374,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--timeline-accent, var(--primary));
+  background: var(--primary);
 }
 .timeline-item::after {
   content: "";
@@ -591,8 +597,6 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .report-severity {
   padding: 10px 16px;
   border-radius: 999px;
-  background: #102033;
-  color: #fff;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: .08em;
@@ -625,13 +629,35 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .report-dual h3 { margin: 0 0 8px; font-size: 14px; text-transform: uppercase; letter-spacing: .06em; color: #617a95; }
 .report-dual p, .report-note p, .report-checkpoint p { margin: 0; }
 .report-timeline { position: relative; display: grid; gap: 12px; }
+.report-timeline::before {
+  content: "";
+  position: absolute;
+  left: 164px;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #2b85e4 0%, #8ec0ff 62%, #d9e6f4 100%);
+}
 .report-timeline-item { display: grid; gap: 12px; }
-.report-timeline-time { font-weight: 700; color: #21496d; }
+.report-timeline-time { font-weight: 700; color: #21496d; padding-top: 6px; }
 .report-timeline-body {
+  position: relative;
   padding: 16px 18px;
   border-radius: 16px;
   border: 1px solid #dfe8f2;
   background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+.report-timeline-body::before {
+  content: "";
+  position: absolute;
+  left: -18px;
+  top: 18px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #2b85e4;
+  box-shadow: 0 0 0 4px #eef5fd;
 }
 .report-timeline-body p { margin: 8px 0 6px; }
 .report-timeline-body span { color: #617a95; font-size: 12px; }
@@ -668,6 +694,9 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 }
 .report-attachments-cover {
   padding-top: 8px;
+}
+.report-attachments-cover .report-section p {
+  margin-top: 8px;
 }
 .report-attachment-sheet {
   min-height: 72vh;
@@ -800,16 +829,30 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   .brand-title { font-size: 16px; }
   .brand-mark { width: 24px; height: 24px; }
   .top-actions .btn.incident {
-    min-width: 0;
-    padding: 8px 10px;
+    width: 52px;
+    min-width: 52px;
+    padding: 8px 0;
+    gap: 0;
+    justify-content: center;
   }
-  .top-actions .btn.incident span { font-size: 0; }
+  .top-actions .btn.incident span { display: none; }
   .top-actions .btn.incident svg { margin: 0; }
   .filter-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .incident-card,
   .project-card,
   .timeline-item {
     min-width: 0;
+  }
+  .bottom-nav {
+    padding: 2px 6px 2px;
+    gap: 4px;
+  }
+  .bottom-nav .nav-button {
+    min-height: 42px;
+    padding: 5px 4px;
+  }
+  .bottom-nav .nav-button span {
+    font-size: 12px;
   }
 }
 
@@ -899,7 +942,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
     padding-right: 4px;
   }
   .bottom-nav {
-    padding: 2px 10px calc(2px + env(safe-area-inset-bottom));
+    padding: 2px 10px 2px;
   }
   .bottom-nav .nav-button {
     min-height: 44px;

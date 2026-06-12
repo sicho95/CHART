@@ -172,7 +172,7 @@ function incidentDetail(incident) {
   const isClosed = incident.status === "clos";
 
   return `
-    <div class="incident-detail-shell" style="--timeline-accent:${severityColor(incident.severity)}">
+    <div class="incident-detail-shell">
       <div class="detail-header incident-detail-header">
         <h1 class="detail-title">${escapeHtml(incident.title)}</h1>
         <div class="badges">
@@ -941,15 +941,6 @@ function kindLabel(kind) {
   }[kind] || kind;
 }
 
-function severityColor(severity) {
-  return {
-    critique: "var(--danger)",
-    majeur: "var(--danger)",
-    significatif: "var(--warning)",
-    mineur: "var(--info)"
-  }[severity] || "var(--primary)";
-}
-
 function incidentLevelAttachments(incident) {
   const ownerIds = new Set([incident.id].filter(Boolean));
   return state.attachments
@@ -1213,12 +1204,12 @@ function reportPrintCss() {
       position: relative;
       display: grid;
       gap: 10px;
-      padding-left: 18px;
+      padding-left: 0;
     }
     .report-timeline::before {
       content: "";
       position: absolute;
-      left: 7px;
+      left: 146px;
       top: 4px;
       bottom: 4px;
       width: 3px;
@@ -1304,6 +1295,7 @@ function reportPrintCss() {
       font-size: 11px;
     }
     .report-attachments-cover { page-break-before: always; }
+    .report-attachments-cover .report-section p { margin-top: 8px; }
     .report-attachment-page { page-break-before: always; min-height: calc(297mm - 24mm); display: grid; }
     .report-attachment-sheet {
       min-height: calc(297mm - 24mm);
