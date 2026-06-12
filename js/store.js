@@ -151,7 +151,7 @@ export async function saveProject(form) {
     statusOptions: splitList(form.statusOptions, DEFAULT_STATUSES),
     contacts: existing?.contacts || [],
     defaultStakeholderGroups: splitList(form.defaultStakeholderGroups, DEFAULT_GROUPS),
-    color: form.color || "teal",
+    color: form.colorHex || form.color || existing?.color || "#2b85e4",
     archived: false
   };
   await put("projects", project);
@@ -183,6 +183,16 @@ export async function saveContact(form) {
     project.updatedAt = nowIso();
     await put("projects", project);
   }
+  await loadAll();
+  emit();
+  return contact;
+}
+
+export async function deleteContact(contactId) {
+  const contact = state.contacts.find((item) => item.id === contactId);
+  if (!contact) return null;
+  contact.isActive = false;
+  await put("contacts", contact);
   await loadAll();
   emit();
   return contact;
@@ -270,7 +280,7 @@ export async function addEvent(form, files = []) {
   return event;
 }
 
-export async function saveCheckpoint(form, freeze = false) {
+export async function saveCheckpoint(form, freeze = false, files = []) {
   const incident = state.incidents.find((item) => item.id === form.incidentId);
   if (!incident) return null;
   const existing = form.id ? state.checkpoints.find((item) => item.id === form.id) : null;
@@ -304,6 +314,9 @@ export async function saveCheckpoint(form, freeze = false) {
   incident.updatedAt = nowIso();
   await put("checkpoints", checkpoint);
   await put("incidents", incident);
+  if (files.length) {
+    await addAttachments("checkpoint", checkpoint.id, files);
+  }
   if (freeze) {
     await addEvent({
       incidentId: incident.id,
@@ -321,6 +334,7 @@ export async function saveCheckpoint(form, freeze = false) {
 export async function closeIncident(form) {
   const incident = state.incidents.find((item) => item.id === form.incidentId);
   if (!incident) return null;
+  const finalSummary = form.finalSummary || form.resolutionSummary || "Incident clos.";
   const closure = {
     id: id("cls"),
     incidentId: incident.id,
@@ -331,7 +345,7 @@ export async function closeIncident(form) {
     rootCauseSummary: form.rootCauseSummary || "",
     correctiveActions: form.correctiveActions || "",
     postIncidentReviewRequired: Boolean(form.postIncidentReviewRequired),
-    finalSummary: form.finalSummary,
+    finalSummary,
     generatedReportId: null,
     createdAt: nowIso()
   };

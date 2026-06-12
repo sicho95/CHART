@@ -69,7 +69,7 @@ export function timelineStats(incidents, checkpoints, filters = {}) {
     if (filters.type && incident.type !== filters.type) return false;
     const declared = new Date(incident.declaredAt);
     if (filters.from && declared < new Date(filters.from)) return false;
-    if (filters.to && declared > new Date(`${filters.to}T23:59:59`)) return false;
+    if (filters.to && declared > new Date(filters.to)) return false;
     return true;
   });
   const durations = filtered
@@ -187,7 +187,13 @@ export function makeSeedData() {
 
 export function buildClosureReport({ incident, project, contacts, events, checkpoints, closure }) {
   const owner = contacts.find((contact) => contact.id === incident.ownerContactId);
-  const frozen = checkpoints.filter((checkpoint) => checkpoint.status === "frozen");
+  const frozen = checkpoints
+    .filter((checkpoint) => checkpoint.status === "frozen")
+    .sort((a, b) => new Date(a.heldAt || a.updatedAt) - new Date(b.heldAt || b.updatedAt));
+  const orderedEvents = [...events].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const firstFrozen = frozen[0];
+  const closedAt = closure.closedAt || incident.closedAt || nowIso();
+  const severityLabel = String(incident.severity || "").toUpperCase();
   return {
     id: id("rep"),
     incidentId: incident.id,
@@ -196,27 +202,100 @@ export function buildClosureReport({ incident, project, contacts, events, checkp
     title: `Rapport de clôture - ${incident.title}`,
     html: `
       <article class="report">
-        <header>
-          <h1>Rapport de clôture incident</h1>
-          <p>CHART - Chronology & History of Alerts, Reporting and Tracking</p>
+        <header class="report-hero">
+          <div>
+            <p class="report-eyebrow">CHART incident closure report</p>
+            <h1>${escapeHtml(incident.title)}</h1>
+            <p class="report-summary">${escapeHtml(closure.finalSummary)}</p>
+          </div>
+          <div class="report-severity">${escapeHtml(severityLabel)}</div>
         </header>
+        <section class="report-dashboard">
+          <article class="report-stat">
+            <span class="report-stat-label">Projet</span>
+            <strong>${escapeHtml(project?.name || "Non renseigné")}</strong>
+            <span>${escapeHtml(project?.environment || "Environnement non renseigné")}</span>
+          </article>
+          <article class="report-stat">
+            <span class="report-stat-label">Durée totale</span>
+            <strong>${formatDuration(incident.declaredAt, closedAt)}</strong>
+            <span>Déclaré ${formatDate(incident.declaredAt)}</span>
+          </article>
+          <article class="report-stat">
+            <span class="report-stat-label">Prise en compte</span>
+            <strong>${firstFrozen ? formatDuration(incident.declaredAt, firstFrozen.heldAt || firstFrozen.updatedAt) : "n/a"}</strong>
+            <span>${firstFrozen ? `Premier point figé ${formatDate(firstFrozen.heldAt || firstFrozen.updatedAt)}` : "Aucun point figé"}</span>
+          </article>
+          <article class="report-stat">
+            <span class="report-stat-label">Résolution</span>
+            <strong>${formatDate(closedAt)}</strong>
+            <span>Pilote ${escapeHtml(owner?.fullName || "Non renseigné")}</span>
+          </article>
+        </section>
         <section class="report-grid">
-          <div><strong>Projet</strong><br>${escapeHtml(project?.name)}</div>
-          <div><strong>Incident</strong><br>${escapeHtml(incident.title)}</div>
-          <div><strong>Gravité</strong><br>${escapeHtml(incident.severity)}</div>
-          <div><strong>Durée</strong><br>${formatDuration(incident.declaredAt, closure.closedAt)}</div>
           <div><strong>Déclaré par</strong><br>${escapeHtml(incident.declaredBy)}</div>
           <div><strong>Pilote</strong><br>${escapeHtml(owner?.fullName || "Non renseigné")}</div>
+          <div><strong>Gravité</strong><br>${escapeHtml(incident.severity)}</div>
+          <div><strong>Statut final</strong><br>clos</div>
         </section>
-        <section><h2>Impacts</h2><p><strong>Métier:</strong> ${escapeHtml(incident.businessImpact)}</p><p><strong>Technique:</strong> ${escapeHtml(incident.technicalImpact || "Non renseigné")}</p></section>
-        <section><h2>Résolution</h2><p>${escapeHtml(closure.resolutionSummary)}</p><p><strong>Cause connue:</strong> ${closure.rootCauseKnown ? "Oui" : "Non"}</p><p>${escapeHtml(closure.rootCauseSummary || "")}</p></section>
-        <section><h2>Timeline</h2>${events.map((event) => `<p><strong>${formatDate(event.createdAt)}</strong> - ${escapeHtml(event.message)}</p>`).join("")}</section>
-        <section><h2>Points intermédiaires figés</h2>${frozen.map((checkpoint) => `<p><strong>${formatDate(checkpoint.heldAt || checkpoint.updatedAt)}</strong> - ${escapeHtml(checkpoint.situationSummary)}</p>`).join("") || "<p>Aucun point figé.</p>"}</section>
-        <section><h2>Actions correctives</h2><p>${escapeHtml(closure.correctiveActions || "Non renseigné")}</p></section>
-        <section><h2>Synthèse finale</h2><p>${escapeHtml(closure.finalSummary)}</p></section>
+        <section class="report-section">
+          <h2>Impacts</h2>
+          <div class="report-dual">
+            <article><h3>Métier</h3><p>${escapeHtml(incident.businessImpact)}</p></article>
+            <article><h3>Technique</h3><p>${escapeHtml(incident.technicalImpact || "Non renseigné")}</p></article>
+          </div>
+        </section>
+        <section class="report-section">
+          <h2>Résolution et causes</h2>
+          <div class="report-dual">
+            <article><h3>Résolution</h3><p>${escapeHtml(closure.resolutionSummary)}</p></article>
+            <article><h3>Cause</h3><p><strong>${closure.rootCauseKnown ? "Cause connue" : "Cause non confirmée"}</strong></p><p>${escapeHtml(closure.rootCauseSummary || "Non renseigné")}</p></article>
+          </div>
+          <article class="report-note"><strong>Actions correctives</strong><p>${escapeHtml(closure.correctiveActions || "Non renseigné")}</p></article>
+        </section>
+        <section class="report-section">
+          <h2>Chronologie détaillée</h2>
+          <div class="report-timeline">
+            ${orderedEvents.map((event) => `
+              <article class="report-timeline-item">
+                <div class="report-timeline-time">${formatDate(event.createdAt)}</div>
+                <div class="report-timeline-body">
+                  <strong>${escapeHtml(kindLabel(event.kind))}</strong>
+                  <p>${escapeHtml(event.message)}</p>
+                  <span>${escapeHtml(event.author || "CHART")}</span>
+                </div>
+              </article>
+            `).join("")}
+          </div>
+        </section>
+        <section class="report-section">
+          <h2>Points intermédiaires figés</h2>
+          ${frozen.length ? `<div class="report-checkpoints">${frozen.map((checkpoint) => `
+            <article class="report-checkpoint">
+              <div class="report-checkpoint-top">
+                <strong>${formatDate(checkpoint.heldAt || checkpoint.updatedAt)}</strong>
+                <span>${escapeHtml(checkpoint.mode || "Point")}</span>
+              </div>
+              <p>${escapeHtml(checkpoint.situationSummary || "Point sans synthèse")}</p>
+              <p><strong>Reste à faire</strong> ${escapeHtml(checkpoint.remainingActions || "Non renseigné")}</p>
+              <p><strong>Blocages</strong> ${escapeHtml(checkpoint.blockersRisks || "Aucun")}</p>
+            </article>
+          `).join("")}</div>` : "<p>Aucun point figé.</p>"}
+        </section>
       </article>
     `
   };
+}
+
+function kindLabel(kind) {
+  return {
+    create: "Création",
+    update: "Mise à jour",
+    notification: "Notification",
+    checkpoint_frozen: "Point figé",
+    closure: "Clôture",
+    attachment: "Pièce jointe"
+  }[kind] || kind;
 }
 
 export function escapeHtml(value) {

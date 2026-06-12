@@ -4,6 +4,7 @@ import {
   closeIncident,
   createIncident,
   deleteAttachment,
+  deleteContact,
   downloadExport,
   lastExportAt,
   replaceFromImport,
@@ -17,8 +18,7 @@ import {
   setRoute,
   setSearch,
   setTheme,
-  state,
-  updateIncidentStatus
+  state
 } from "./store.js";
 import {
   DEFAULT_GROUPS,
@@ -47,7 +47,7 @@ export function renderApp(root) {
         </div>
         <div class="top-actions">
           <button class="btn icon" data-action="theme" title="Basculer le thème">${icon("i-settings")}</button>
-          <button class="btn primary" data-action="new-incident">${icon("i-plus")}<span>Nouveau</span></button>
+          <button class="btn incident" data-action="new-incident">${icon("i-plus")}<span>Incident</span></button>
         </div>
       </header>
       <aside class="rail">${navMarkup("nav")}</aside>
@@ -57,7 +57,6 @@ export function renderApp(root) {
         ${routeMarkup()}
       </main>
       ${navMarkup("bottom-nav")}
-      <button class="btn primary fab" data-action="new-incident">${icon("i-plus")}Nouveau</button>
     </div>
   `;
   bindEvents(root);
@@ -85,19 +84,21 @@ function routeMarkup() {
 function incidentsPage() {
   const incidents = filteredIncidents();
   const selected = state.incidents.find((incident) => incident.id === state.selectedIncidentId) || incidents[0];
-  return `<div class="workspace">
-    <section class="panel panel-pad">
-      ${incidentToolbar()}
-      <div class="cards">
-        ${incidents.length ? incidents.map((incident) => incidentCard(incident, selected?.id)).join("") : empty("Aucun incident ne correspond aux filtres.")}
+  return `<div class="workspace workspace-incidents">
+    <section class="panel incident-sidebar">
+      <div class="panel-pad incident-sidebar-shell">
+        ${incidentToolbar()}
+        <div class="cards incident-list">
+          ${incidents.length ? incidents.map((incident) => incidentCard(incident, selected?.id)).join("") : empty("Aucun incident ne correspond aux filtres.")}
+        </div>
       </div>
     </section>
-    <section class="panel">${selected ? incidentDetail(selected) : `<div class="detail-empty">Créez un premier incident pour commencer.</div>`}</section>
+    <section class="panel incident-detail-panel">${selected ? incidentDetail(selected) : `<div class="detail-empty">Créez un premier incident pour commencer.</div>`}</section>
   </div>`;
 }
 
 function incidentToolbar() {
-  return `<div class="toolbar">
+  return `<div class="toolbar incident-toolbar">
     <div class="search-box">${icon("i-search")}<input class="input" data-input="search" value="${escapeHtml(state.search)}" placeholder="Rechercher titre, déclarant, owner, résumé"></div>
     <div class="filter-row">
       ${selectFilter("projectId", "Tous projets", state.projects.map((project) => [project.id, project.name]))}
@@ -119,7 +120,10 @@ function incidentCard(incident, selectedId) {
       </div>
       <span class="badge ${severityClass(incident.severity)}">${escapeHtml(incident.severity)}</span>
     </div>
-    <div class="badges"><span class="badge ${statusClass(incident.status)}">${escapeHtml(labelStatus(incident.status))}</span><span class="badge">${formatDuration(incident.declaredAt, incident.closedAt || undefined)}</span></div>
+    <div class="badges">
+      <span class="badge ${statusClass(incident.status)}">${escapeHtml(labelStatus(incident.status))}</span>
+      <span class="badge">${formatDuration(incident.declaredAt, incident.closedAt || undefined)}</span>
+    </div>
     <div class="card-meta">Déclaré ${formatDate(incident.declaredAt)} · prochain point ${formatDate(incident.nextCheckpointAt)}</div>
     <div class="line-clamp">${escapeHtml(incident.currentSummary || incident.businessImpact)}</div>
   </button>`;
@@ -132,34 +136,61 @@ function incidentDetail(incident) {
   const checkpoints = state.checkpoints.filter((checkpoint) => checkpoint.incidentId === incident.id);
   const closure = state.closures.find((item) => item.id === incident.closureId);
   const report = state.reports.find((item) => item.id === closure?.generatedReportId);
+  const attachments = relatedAttachments(incident);
+  const frozenPoints = checkpoints.filter((item) => item.status === "frozen");
+  const draftPoints = checkpoints.filter((item) => item.status === "draft");
+
   return `
-    <div class="detail-header">
-      <h1 class="detail-title">${escapeHtml(incident.title)}</h1>
-      <div class="badges">
-        <span class="badge">${escapeHtml(project?.name || "")}</span>
-        <span class="badge ${severityClass(incident.severity)}">${escapeHtml(incident.severity)}</span>
-        <span class="badge ${statusClass(incident.status)}">${escapeHtml(labelStatus(incident.status))}</span>
-        <span class="badge">${escapeHtml(owner?.fullName || "Pilote non renseigné")}</span>
+    <div class="incident-detail-shell">
+      <div class="detail-header incident-detail-header">
+        <h1 class="detail-title">${escapeHtml(incident.title)}</h1>
+        <div class="badges">
+          <span class="badge">${escapeHtml(project?.name || "")}</span>
+          <span class="badge ${severityClass(incident.severity)}">${escapeHtml(incident.severity)}</span>
+          <span class="badge ${statusClass(incident.status)}">${escapeHtml(labelStatus(incident.status))}</span>
+          <span class="badge">${escapeHtml(owner?.fullName || "Pilote non renseigné")}</span>
+        </div>
+        <div class="detail-actions">
+          <button class="btn" data-action="event" data-incident="${incident.id}">Ajouter événement</button>
+          <button class="btn" data-action="checkpoint" data-incident="${incident.id}">Préparer point</button>
+          <button class="btn" data-action="notify" data-incident="${incident.id}">Marquer avertis</button>
+          <label class="btn"><input type="file" hidden multiple data-file-attachments="${incident.id}">Ajouter fichier</label>
+          <button class="btn success" data-action="close" data-incident="${incident.id}" ${incident.status === "clos" ? "disabled" : ""}>Clôturer</button>
+          ${report ? `<button class="btn" data-action="show-report" data-report="${report.id}">Voir rapport</button>` : ""}
+        </div>
       </div>
-      <div class="detail-actions">
-        <button class="btn" data-action="event" data-incident="${incident.id}">Ajouter événement</button>
-        <button class="btn" data-action="checkpoint" data-incident="${incident.id}">Préparer point</button>
-        <button class="btn" data-action="notify" data-incident="${incident.id}">Marquer avertis</button>
-        <button class="btn primary" data-action="close" data-incident="${incident.id}" ${incident.status === "clos" ? "disabled" : ""}>Clôturer</button>
+      <div class="incident-detail-top panel-pad">
+        <section class="kpis">
+          <div class="kpi"><span class="kpi-value">${formatDuration(incident.declaredAt, incident.closedAt || undefined)}</span><span class="kpi-label">Durée</span></div>
+          <div class="kpi"><span class="kpi-value">${formatDate(incident.nextCheckpointAt)}</span><span class="kpi-label">Prochain point</span></div>
+          <div class="kpi"><span class="kpi-value">${events.length}</span><span class="kpi-label">Entrées timeline</span></div>
+          <div class="kpi"><span class="kpi-value">${frozenPoints.length}</span><span class="kpi-label">Points figés</span></div>
+        </section>
+        <section>
+          <h2 class="panel-title">Résumé actuel</h2>
+          <p>${escapeHtml(incident.currentSummary)}</p>
+          <p class="muted">${escapeHtml(incident.businessImpact)}</p>
+          ${closure ? `<p class="muted">Clos le ${formatDate(closure.closedAt)}</p>` : ""}
+        </section>
       </div>
-    </div>
-    <div class="panel-pad page-grid">
-      <section class="kpis">
-        <div class="kpi"><span class="kpi-value">${formatDuration(incident.declaredAt, incident.closedAt || undefined)}</span><span class="kpi-label">Durée</span></div>
-        <div class="kpi"><span class="kpi-value">${formatDate(incident.nextCheckpointAt)}</span><span class="kpi-label">Prochain point</span></div>
-        <div class="kpi"><span class="kpi-value">${events.length}</span><span class="kpi-label">Entrées timeline</span></div>
-        <div class="kpi"><span class="kpi-value">${checkpoints.filter((item) => item.status === "frozen").length}</span><span class="kpi-label">Points figés</span></div>
+      <section class="incident-timeline-region panel-pad">
+        <div class="card-top"><h2 class="panel-title">Timeline</h2><span class="card-meta">${events.length} entrée(s)</span></div>
+        <div class="timeline incident-timeline-scroll">${events.map(timelineItem).join("") || empty("Aucun événement.")}</div>
       </section>
-      <section><h2 class="panel-title">Résumé actuel</h2><p>${escapeHtml(incident.currentSummary)}</p><p class="muted">${escapeHtml(incident.businessImpact)}</p></section>
-      <section><h2 class="panel-title">Timeline</h2><div class="timeline">${events.map(timelineItem).join("") || empty("Aucun événement.")}</div></section>
-      <section><h2 class="panel-title">Points intermédiaires</h2><div class="cards">${checkpoints.map(checkpointCard).join("") || empty("Aucun point préparé.")}</div></section>
-      <section><h2 class="panel-title">Pièces jointes</h2>${attachmentsMarkup(incident)}</section>
-      ${closure ? `<section><h2 class="panel-title">Clôture</h2><p>${escapeHtml(closure.finalSummary)}</p><p class="muted">Clos le ${formatDate(closure.closedAt)}</p>${report ? `<button class="btn" data-action="show-report" data-report="${report.id}">Voir le rapport</button>` : ""}</section>` : ""}
+      <div class="incident-bottom-grid panel-pad">
+        <section class="incident-subpanel">
+          <div class="card-top"><h2 class="panel-title">Points intermédiaires</h2><span class="card-meta">${draftPoints.length} brouillon(s) · ${frozenPoints.length} figé(s)</span></div>
+          <div class="cards incident-subpanel-scroll">
+            ${checkpoints.length ? checkpoints.map((checkpoint) => checkpointCard(incident, checkpoint)).join("") : empty("Aucun point préparé.")}
+          </div>
+        </section>
+        <section class="incident-subpanel">
+          <div class="card-top"><h2 class="panel-title">Pièces jointes</h2><span class="card-meta">${attachments.length} fichier(s)</span></div>
+          <div class="cards incident-subpanel-scroll">
+            ${attachments.length ? attachments.map(attachmentCard).join("") : empty("Aucune pièce jointe.")}
+          </div>
+        </section>
+      </div>
     </div>`;
 }
 
@@ -171,26 +202,35 @@ function timelineItem(event) {
   </article>`;
 }
 
-function checkpointCard(checkpoint) {
+function checkpointCard(incident, checkpoint) {
+  const checkpointAttachments = state.attachments.filter((attachment) => attachment.ownerId === checkpoint.id);
   return `<article class="incident-card">
-    <div class="card-top"><strong>${checkpoint.status === "frozen" ? "Point figé" : "Brouillon"}</strong><span class="badge">${formatDate(checkpoint.heldAt || checkpoint.scheduledAt)}</span></div>
+    <div class="card-top">
+      <strong>${checkpoint.status === "frozen" ? "Point figé" : "Brouillon"}</strong>
+      <span class="badge">${formatDate(checkpoint.heldAt || checkpoint.scheduledAt)}</span>
+    </div>
     <div>${escapeHtml(checkpoint.situationSummary || "Point sans synthèse")}</div>
     <div class="card-meta">Reste à faire: ${escapeHtml(checkpoint.remainingActions || "Non renseigné")}</div>
+    <div class="card-meta">${checkpointAttachments.length ? `${checkpointAttachments.length} fichier(s)` : "Sans fichier"}</div>
+    <div class="detail-actions">
+      <button class="btn" data-action="checkpoint-edit" data-incident="${incident.id}" data-checkpoint="${checkpoint.id}">${checkpoint.status === "draft" ? "Modifier" : "Consulter"}</button>
+    </div>
   </article>`;
 }
 
-function attachmentsMarkup(incident) {
-  const attachments = state.attachments.filter((item) => incident.attachmentIds?.includes(item.id) || item.ownerId === incident.id);
-  return `<div class="cards">
-    ${attachments.map((attachment) => `<article class="incident-card">
-      <div class="card-top"><strong>${escapeHtml(attachment.filename)}</strong><span class="card-meta">${Math.round(attachment.size / 1024)} Ko</span></div>
-      <div class="detail-actions">
-        <button class="btn" data-action="download-attachment" data-attachment="${attachment.id}">Télécharger</button>
-        <button class="btn danger" data-action="delete-attachment" data-attachment="${attachment.id}">Supprimer</button>
-      </div>
-    </article>`).join("") || empty("Aucune pièce jointe.")}
-    <label class="btn"><input type="file" hidden multiple data-file-attachments="${incident.id}">Ajouter des fichiers</label>
-  </div>`;
+function attachmentCard(attachment) {
+  return `<article class="incident-card">
+    ${attachmentPreview(attachment)}
+    <div class="card-top">
+      <strong>${escapeHtml(attachment.filename)}</strong>
+      <span class="card-meta">${Math.round(attachment.size / 1024)} Ko</span>
+    </div>
+    <div class="card-meta">${attachmentScopeLabel(attachment.scope)} · ${formatDate(attachment.createdAt)}</div>
+    <div class="detail-actions">
+      <button class="btn" data-action="download-attachment" data-attachment="${attachment.id}">Télécharger</button>
+      <button class="btn danger" data-action="delete-attachment" data-attachment="${attachment.id}">Supprimer</button>
+    </div>
+  </article>`;
 }
 
 function timelinePage() {
@@ -202,8 +242,8 @@ function timelinePage() {
       <div class="toolbar">
         <div class="filter-row">
           ${selectFilter("projectId", "Tous projets", state.projects.map((project) => [project.id, project.name]))}
-          <input class="input" type="date" data-filter="from" value="${escapeHtml(filters.from)}">
-          <input class="input" type="date" data-filter="to" value="${escapeHtml(filters.to)}">
+          <input class="input" type="datetime-local" step="60" data-filter="from" value="${escapeHtml(filters.from)}">
+          <input class="input" type="datetime-local" step="60" data-filter="to" value="${escapeHtml(filters.to)}">
           ${selectFilter("severity", "Gravité", DEFAULT_SEVERITIES.map((item) => [item, item]))}
           ${selectFilter("status", "Statut", DEFAULT_STATUSES.map((item) => [item, labelStatus(item)]))}
         </div>
@@ -232,25 +272,33 @@ function timelinePage() {
 
 function projectsPage() {
   const selected = state.projects.find((project) => project.id === state.selectedProjectId) || state.projects[0];
-  const contacts = state.contacts.filter((contact) => contact.projectId === selected?.id);
+  const contacts = contactsForProject(selected?.id, false);
   return `<div class="split">
     <section class="panel">
       <div class="panel-header"><div><h1 class="panel-title">Projets</h1><div class="panel-subtitle">${state.projects.length} configuration(s)</div></div><button class="btn primary" data-action="project">${icon("i-plus")}Projet</button></div>
       <div class="panel-pad cards">${state.projects.map((project) => `<button class="project-card ${project.id === selected?.id ? "active" : ""}" data-select-project="${project.id}">
-        <strong>${escapeHtml(project.name)}</strong><span class="card-meta">${escapeHtml(project.environment)} · ${project.incidentTypes.length} types · ${contactsForProject(project.id).length} contacts</span>
+        <strong>${escapeHtml(project.name)}</strong><span class="card-meta">${escapeHtml(project.environment)} · ${project.incidentTypes.length} types · ${contactsForProject(project.id).length} contacts actifs</span>
       </button>`).join("")}</div>
     </section>
     <section class="panel">${selected ? `
       <div class="panel-header"><div><h2 class="panel-title">${escapeHtml(selected.name)}</h2><div class="panel-subtitle">${escapeHtml(selected.description || "Configuration projet")}</div></div><button class="btn" data-action="project" data-project="${selected.id}">Modifier</button></div>
       <div class="panel-pad page-grid">
         <section><h3 class="panel-title">Référentiels</h3><p class="muted">Types: ${selected.incidentTypes.join(", ")}</p><p class="muted">Gravités: ${selected.severityLevels.join(", ")}</p><p class="muted">Statuts: ${selected.statusOptions.map(labelStatus).join(", ")}</p></section>
-        <section><div class="card-top"><h3 class="panel-title">Contacts</h3><button class="btn" data-action="contact" data-project="${selected.id}">${icon("i-plus")}Contact</button></div><div class="cards">${contacts.map(contactCard).join("") || empty("Aucun contact projet.")}</div></section>
+        <section><div class="card-top"><h3 class="panel-title">Contacts</h3><button class="btn" data-action="contact" data-project="${selected.id}">${icon("i-plus")}Contact</button></div><div class="cards">${contacts.filter((contact) => contact.isActive !== false).map(contactCard).join("") || empty("Aucun contact projet.")}</div></section>
       </div>` : `<div class="detail-empty">Créez un premier projet pour commencer.</div>`}</section>
   </div>`;
 }
 
 function contactCard(contact) {
-  return `<article class="incident-card"><div class="card-top"><strong>${escapeHtml(contact.fullName)}</strong><span class="badge">${escapeHtml(contact.group || "groupe")}</span></div><div class="card-meta">${escapeHtml(contact.roleLabel)} · ${escapeHtml(contact.organization)}</div><div class="card-meta">${escapeHtml(contact.email)} ${escapeHtml(contact.phone)}</div></article>`;
+  return `<article class="incident-card">
+    <div class="card-top"><strong>${escapeHtml(contact.fullName)}</strong><span class="badge">${escapeHtml(contact.group || "groupe")}</span></div>
+    <div class="card-meta">${escapeHtml(contact.roleLabel)} · ${escapeHtml(contact.organization)}</div>
+    <div class="card-meta">${escapeHtml(contact.email)} ${escapeHtml(contact.phone)}</div>
+    <div class="detail-actions">
+      <button class="btn" data-action="contact-edit" data-contact="${contact.id}">Éditer</button>
+      <button class="btn danger" data-action="contact-delete" data-contact="${contact.id}">Supprimer</button>
+    </div>
+  </article>`;
 }
 
 function exportPage() {
@@ -278,14 +326,19 @@ function exportPage() {
 function bindEvents(root) {
   root.querySelectorAll("[data-route]").forEach((button) => button.addEventListener("click", () => setRoute(button.dataset.route)));
   root.querySelectorAll("[data-select-incident]").forEach((button) => button.addEventListener("click", () => selectIncident(button.dataset.selectIncident)));
-  root.querySelectorAll("[data-select-route-incident]").forEach((button) => button.addEventListener("click", () => { selectIncident(button.dataset.selectRouteIncident); setRoute("incidents"); }));
+  root.querySelectorAll("[data-select-route-incident]").forEach((button) => button.addEventListener("click", () => {
+    selectIncident(button.dataset.selectRouteIncident);
+    setRoute("incidents");
+  }));
   root.querySelectorAll("[data-select-project]").forEach((button) => button.addEventListener("click", () => selectProject(button.dataset.selectProject)));
   root.querySelectorAll("[data-filter]").forEach((input) => input.addEventListener("input", () => setFilter(input.dataset.filter, input.value)));
   root.querySelector("[data-input='search']")?.addEventListener("input", (event) => setSearch(event.target.value));
   root.querySelectorAll("[data-action]").forEach((button) => button.addEventListener("click", () => handleAction(button)));
   root.querySelectorAll("[data-file-attachments]").forEach((input) => input.addEventListener("change", async () => {
+    if (!input.files?.length) return;
     await addAttachments("incident", input.dataset.fileAttachments, [...input.files]);
-    showToast("Pièce jointe ajoutée.");
+    input.value = "";
+    showToast("Fichier ajouté.");
   }));
   root.querySelector("[data-import-json]")?.addEventListener("change", async (event) => {
     const file = event.target.files[0];
@@ -303,10 +356,13 @@ function handleAction(button) {
   if (action === "new-incident") return openIncidentModal();
   if (action === "event") return openEventModal(button.dataset.incident);
   if (action === "checkpoint") return openCheckpointModal(button.dataset.incident);
+  if (action === "checkpoint-edit") return openCheckpointModal(button.dataset.incident, button.dataset.checkpoint);
   if (action === "notify") return openNotifyModal(button.dataset.incident);
   if (action === "close") return openClosureModal(button.dataset.incident);
   if (action === "project") return openProjectModal(button.dataset.project);
   if (action === "contact") return openContactModal(button.dataset.project);
+  if (action === "contact-edit") return openContactModal(contactById(button.dataset.contact)?.projectId, button.dataset.contact);
+  if (action === "contact-delete" && confirm("Supprimer ce contact de la liste active ?")) return deleteContact(button.dataset.contact).then(() => showToast("Contact supprimé."));
   if (action === "export-json") return downloadExport().then(() => showToast("Export JSON généré."));
   if (action === "reset-seed" && confirm("Réinitialiser avec l'exemple et effacer les données locales ?")) return resetWithSeed().then(() => showToast("Exemple restauré."));
   if (action === "show-report") return openReportModal(button.dataset.report);
@@ -334,7 +390,8 @@ function incidentForm(project) {
     ${field("ownerContactId", "Pilote", selectOptions(contactsForProject(project?.id).map((item) => [item.id, item.fullName])), "select")}
     ${field("status", "Statut", selectOptions((project?.statusOptions || DEFAULT_STATUSES).map((item) => [item, labelStatus(item)]), "en_cours"), "select")}
     ${field("businessImpact", "Impact métier", "", "textarea", true, "wide")}
-    <details class="form-section wide"><summary class="section-label">Champs secondaires</summary>
+    <details class="form-section wide">
+      <summary class="section-label">Champs secondaires</summary>
       <div class="form-grid">
         ${field("location", "Lieu / environnement")}
         ${field("technicalImpact", "Impact technique", "", "textarea", false, "wide")}
@@ -363,29 +420,39 @@ function openEventModal(incidentId) {
   });
 }
 
-function openCheckpointModal(incidentId) {
+function openCheckpointModal(incidentId, checkpointId = "") {
   const incident = state.incidents.find((item) => item.id === incidentId);
+  const checkpoint = checkpointId ? state.checkpoints.find((item) => item.id === checkpointId) : null;
   const contacts = contactsForProject(incident?.projectId);
-  openModal("Point intermédiaire", `<form class="form-grid">
+  const suggestions = projectExternalParticipants(incident?.projectId);
+  openModal(checkpoint ? "Modifier le point" : "Point intermédiaire", `<form class="form-grid">
+    <input type="hidden" name="id" value="${checkpoint?.id || ""}">
     <input type="hidden" name="incidentId" value="${incidentId}">
-    ${field("scheduledAt", "Date prévue", localDateValue(new Date()), "datetime-local")}
-    ${field("heldAt", "Date tenue", "", "datetime-local")}
-    ${field("mode", "Modalité", selectOptions([["visio", "Visio"], ["téléphone", "Téléphone"], ["présentiel", "Présentiel"]]), "select")}
-    <div class="field wide"><label>Invités</label>${checks("invitedContactIds", contacts.map((item) => [item.id, item.fullName]))}</div>
-    <div class="field wide"><label>Présents</label>${checks("presentContactIds", contacts.map((item) => [item.id, item.fullName]))}</div>
-    ${field("invitedExternal", "Invités externes", "", "textarea", false, "wide")}
-    ${field("presentExternal", "Présents externes", "", "textarea", false, "wide")}
-    ${field("situationSummary", "Situation", "", "textarea", true, "wide")}
-    ${field("doneSinceLastCheckpoint", "Fait depuis le dernier point", "", "textarea", false, "wide")}
-    ${field("remainingActions", "Reste à faire", "", "textarea", false, "wide")}
-    ${field("blockersRisks", "Blocages / risques", "", "textarea", false, "wide")}
-    ${field("decisionsTaken", "Décisions prises", "", "textarea", false, "wide")}
-    ${field("decisionsToTake", "Décisions à prendre", "", "textarea", false, "wide")}
-    ${field("actions", "Actions", "", "textarea", false, "wide")}
-    ${field("nextCheckpointAt", "Prochain point", "", "datetime-local")}
-    <div class="field wide"><label>Personnes averties</label>${checks("notifiedContacts", contacts.map((item) => [item.id, item.fullName]))}</div>
+    ${field("scheduledAt", "Date prévue", localDateValue(checkpoint?.scheduledAt || new Date()), "datetime-local")}
+    ${field("heldAt", "Date tenue", localDateValue(checkpoint?.heldAt || ""), "datetime-local")}
+    ${field("mode", "Modalité", selectOptions([["visio", "Visio"], ["téléphone", "Téléphone"], ["présentiel", "Présentiel"]], checkpoint?.mode || "visio"), "select")}
+    <div class="field wide">
+      <label>Invités projet</label>
+      ${checks("invitedContactIds", contacts.map((item) => [item.id, item.fullName]), checkpoint?.invitedContactIds || [])}
+      ${tokenField("invitedExternal", "Autres invités", checkpoint?.invitedExternal || [], suggestions)}
+    </div>
+    <div class="field wide">
+      <label>Présents projet</label>
+      ${checks("presentContactIds", contacts.map((item) => [item.id, item.fullName]), checkpoint?.presentContactIds || [])}
+      ${tokenField("presentExternal", "Autres présents", checkpoint?.presentExternal || [], suggestions)}
+    </div>
+    ${field("situationSummary", "Situation", checkpoint?.situationSummary || "", "textarea", true, "wide")}
+    ${field("doneSinceLastCheckpoint", "Fait depuis le dernier point", checkpoint?.doneSinceLastCheckpoint || "", "textarea", false, "wide")}
+    ${field("remainingActions", "Reste à faire", checkpoint?.remainingActions || "", "textarea", false, "wide")}
+    ${field("blockersRisks", "Blocages / risques", checkpoint?.blockersRisks || "", "textarea", false, "wide")}
+    ${field("decisionsTaken", "Décisions prises", rowsToText(checkpoint?.decisionsTaken, "text"), "textarea", false, "wide")}
+    ${field("decisionsToTake", "Décisions à prendre", rowsToText(checkpoint?.decisionsToTake, "text"), "textarea", false, "wide")}
+    ${field("actions", "Actions", rowsToText(checkpoint?.actions, "label"), "textarea", false, "wide")}
+    ${field("nextCheckpointAt", "Prochain point", localDateValue(checkpoint?.nextCheckpointAt || ""), "datetime-local")}
+    <div class="field wide"><label>Personnes averties</label>${checks("notifiedContacts", contacts.map((item) => [item.id, item.fullName]), checkpoint?.notifiedContacts || [])}</div>
+    <div class="field wide"><label>Fichiers du point</label><input class="input" type="file" name="attachments" multiple></div>
   </form>`, async (form, modal, submitter) => {
-    await saveCheckpoint(values(form), submitter?.dataset.freeze === "true");
+    await saveCheckpoint(values(form), submitter?.dataset.freeze === "true", [...form.querySelector("[name='attachments']").files]);
     closeModal(modal);
     showToast(submitter?.dataset.freeze === "true" ? "Le point a été figé et ajouté à la timeline." : "Brouillon enregistré.");
   }, [{ label: "Enregistrer brouillon", variant: "", attrs: "data-freeze='false'" }, { label: "Figer le point", variant: "primary", attrs: "data-freeze='true'" }]);
@@ -402,7 +469,7 @@ function openNotifyModal(incidentId) {
     ${field("message", "Message", "Parties prenantes averties.", "textarea", true, "wide")}
   </form>`, async (form, modal) => {
     const data = values(form);
-    await addEvent({ ...data, message: `${data.message} ${toContactNames(data.contacts).join(", ")}` });
+    await addEvent({ ...data, message: `${data.message} ${toContactNames(data.contacts).join(", ")}`.trim() });
     closeModal(modal);
     showToast("Notification ajoutée à la timeline.");
   });
@@ -417,7 +484,7 @@ function openClosureModal(incidentId) {
     ${field("rootCauseSummary", "Cause", "", "textarea", false, "wide")}
     ${field("correctiveActions", "Actions correctives", "", "textarea", false, "wide")}
     <label class="check-item wide"><input type="checkbox" name="postIncidentReviewRequired"> Revue post-incident requise</label>
-    ${field("finalSummary", "Synthèse finale", "", "textarea", true, "wide")}
+    ${field("finalSummary", "Synthèse finale", "", "textarea", false, "wide")}
   </form>`, async (form, modal) => {
     await closeIncident(values(form));
     closeModal(modal);
@@ -437,7 +504,7 @@ function openProjectModal(projectId) {
     ${field("severityLevels", "Gravités", (project?.severityLevels || DEFAULT_SEVERITIES).join(", "), "textarea", false, "wide")}
     ${field("statusOptions", "Statuts", (project?.statusOptions || DEFAULT_STATUSES).join(", "), "textarea", false, "wide")}
     ${field("defaultStakeholderGroups", "Groupes", (project?.defaultStakeholderGroups || DEFAULT_GROUPS).join(", "), "textarea", false, "wide")}
-    ${field("color", "Couleur", project?.color || "teal")}
+    ${colorField(project?.color || "#2b85e4")}
   </form>`, async (form, modal) => {
     await saveProject(values(form));
     closeModal(modal);
@@ -445,34 +512,38 @@ function openProjectModal(projectId) {
   });
 }
 
-function openContactModal(projectId) {
-  openModal("Nouveau contact", `<form class="form-grid">
+function openContactModal(projectId, contactId = "") {
+  const contact = contactId ? contactById(contactId) : null;
+  openModal(contact ? "Modifier contact" : "Nouveau contact", `<form class="form-grid">
+    <input type="hidden" name="id" value="${contact?.id || ""}">
     <input type="hidden" name="projectId" value="${projectId}">
-    ${field("fullName", "Nom complet", "", "text", true)}
-    ${field("roleLabel", "Rôle")}
-    ${field("group", "Groupe")}
-    ${field("organization", "Organisation")}
-    ${field("email", "Email", "", "email")}
-    ${field("phone", "Téléphone")}
-    <label class="check-item"><input type="checkbox" name="isFavorite"> Favori</label>
-    <label class="check-item"><input type="checkbox" name="isActive" checked> Actif</label>
-    ${field("notes", "Notes", "", "textarea", false, "wide")}
+    ${field("fullName", "Nom complet", contact?.fullName || "", "text", true)}
+    ${field("roleLabel", "Rôle", contact?.roleLabel || "")}
+    ${field("group", "Groupe", contact?.group || "")}
+    ${field("organization", "Organisation", contact?.organization || "")}
+    ${field("email", "Email", contact?.email || "", "email")}
+    ${field("phone", "Téléphone", contact?.phone || "")}
+    <label class="check-item"><input type="checkbox" name="isFavorite" ${contact?.isFavorite ? "checked" : ""}> Favori</label>
+    <label class="check-item"><input type="checkbox" name="isActive" ${contact?.isActive !== false ? "checked" : ""}> Actif</label>
+    ${field("notes", "Notes", contact?.notes || "", "textarea", false, "wide")}
   </form>`, async (form, modal) => {
     await saveContact(values(form));
     closeModal(modal);
-    showToast("Contact ajouté.");
+    showToast(contact ? "Contact mis à jour." : "Contact ajouté.");
   });
 }
 
 function openReportModal(reportId) {
   const report = state.reports.find((item) => item.id === reportId);
-  openModal(report?.title || "Rapport", report?.html || "", null, [{ label: "Imprimer", variant: "primary", attrs: "data-print='true'" }]);
+  openModal(report?.title || "Rapport", `<div class="report-preview">${report?.html || ""}</div>`, null, [
+    { label: "Imprimer", variant: "primary", attrs: `data-report-print="${report?.id || ""}"` }
+  ], "modal-report");
 }
 
-function openModal(title, content, onSubmit, buttons) {
+function openModal(title, content, onSubmit, buttons, extraClass = "") {
   const modal = document.createElement("div");
   modal.className = "modal-backdrop";
-  modal.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+  modal.innerHTML = `<div class="modal ${extraClass}" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
     <div class="panel-header"><h2 class="panel-title">${escapeHtml(title)}</h2><button class="btn icon" data-close>${icon("i-x")}</button></div>
     <div class="panel-pad">${content}</div>
     <div class="modal-actions">
@@ -483,8 +554,10 @@ function openModal(title, content, onSubmit, buttons) {
   document.body.appendChild(modal);
   modal.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => closeModal(modal)));
   modal.addEventListener("click", (event) => { if (event.target === modal) closeModal(modal); });
+  activateTokenFields(modal);
+  activateColorFields(modal);
   modal.querySelectorAll("[type='submit']").forEach((button) => button.addEventListener("click", async () => {
-    if (button.dataset.print === "true") return window.print();
+    if (button.dataset.reportPrint) return printReport(button.dataset.reportPrint);
     const form = modal.querySelector("form");
     if (form && !form.reportValidity()) return;
     if (onSubmit) await onSubmit(form, modal, button);
@@ -498,16 +571,18 @@ function closeModal(modal) {
 
 function filteredIncidents() {
   const query = state.search.trim().toLowerCase();
-  return state.incidents.filter((incident) => {
-    if (state.filters.projectId && incident.projectId !== state.filters.projectId) return false;
-    if (state.filters.severity && incident.severity !== state.filters.severity) return false;
-    if (state.filters.status && incident.status !== state.filters.status) return false;
-    if (state.filters.type && incident.type !== state.filters.type) return false;
-    if (!query) return true;
-    const owner = contactById(incident.ownerContactId)?.fullName || "";
-    const project = projectById(incident.projectId)?.name || "";
-    return [incident.title, project, incident.declaredBy, owner, incident.currentSummary, incident.type].join(" ").toLowerCase().includes(query);
-  });
+  return [...state.incidents]
+    .filter((incident) => {
+      if (state.filters.projectId && incident.projectId !== state.filters.projectId) return false;
+      if (state.filters.severity && incident.severity !== state.filters.severity) return false;
+      if (state.filters.status && incident.status !== state.filters.status) return false;
+      if (state.filters.type && incident.type !== state.filters.type) return false;
+      if (!query) return true;
+      const owner = contactById(incident.ownerContactId)?.fullName || "";
+      const project = projectById(incident.projectId)?.name || "";
+      return [incident.title, project, incident.declaredBy, owner, incident.currentSummary, incident.type].join(" ").toLowerCase().includes(query);
+    })
+    .sort((a, b) => new Date(b.declaredAt) - new Date(a.declaredAt));
 }
 
 function selectFilter(name, placeholder, options) {
@@ -517,15 +592,39 @@ function selectFilter(name, placeholder, options) {
 function field(name, label, value = "", type = "text", required = false, extraClass = "") {
   if (type === "textarea") return `<div class="field ${extraClass}"><label for="${name}">${label}</label><textarea class="textarea" id="${name}" name="${name}" ${required ? "required" : ""}>${escapeHtml(value)}</textarea></div>`;
   if (type === "select") return `<div class="field ${extraClass}"><label for="${name}">${label}</label><select class="select" id="${name}" name="${name}" ${required ? "required" : ""}>${value}</select></div>`;
-  return `<div class="field ${extraClass}"><label for="${name}">${label}</label><input class="input" id="${name}" name="${name}" type="${type}" value="${escapeHtml(value)}" ${required ? "required" : ""}></div>`;
+  const step = type === "datetime-local" ? ` step="60"` : "";
+  return `<div class="field ${extraClass}"><label for="${name}">${label}</label><input class="input" id="${name}" name="${name}" type="${type}" value="${escapeHtml(value)}" ${required ? "required" : ""}${step}></div>`;
+}
+
+function colorField(value) {
+  return `<div class="field wide">
+    <label>Couleur</label>
+    <div class="color-row" data-color-row>
+      <input class="input color-input" type="color" name="color" value="${escapeHtml(normalizeColor(value))}">
+      <input class="input" type="text" name="colorHex" value="${escapeHtml(normalizeColor(value))}" placeholder="#2b85e4">
+    </div>
+  </div>`;
+}
+
+function tokenField(name, label, values, suggestions) {
+  const listId = `${name}_${Math.random().toString(36).slice(2, 8)}`;
+  return `<div class="token-field" data-token-field>
+    <span class="token-label">${escapeHtml(label)}</span>
+    <div class="token-box" data-token-box>
+      <div class="token-list" data-token-list></div>
+      <input class="token-input" type="text" data-token-input list="${listId}" placeholder="Ajouter puis Entrée">
+    </div>
+    <input type="hidden" name="${name}" value="${escapeHtml((values || []).join(", "))}">
+    <datalist id="${listId}">${(suggestions || []).map((item) => `<option value="${escapeHtml(item)}"></option>`).join("")}</datalist>
+  </div>`;
 }
 
 function selectOptions(options, selected = "") {
   return options.map(([value, label]) => `<option value="${escapeHtml(value)}" ${selected === value ? "selected" : ""}>${escapeHtml(label)}</option>`).join("");
 }
 
-function checks(name, options) {
-  return `<div class="check-grid">${options.map(([value, label]) => `<label class="check-item"><input type="checkbox" name="${name}" value="${escapeHtml(value)}"> ${escapeHtml(label)}</label>`).join("") || `<span class="muted">Aucun contact disponible.</span>`}</div>`;
+function checks(name, options, selected = []) {
+  return `<div class="check-grid">${options.map(([value, label]) => `<label class="check-item"><input type="checkbox" name="${name}" value="${escapeHtml(value)}" ${selected.includes(value) ? "checked" : ""}> ${escapeHtml(label)}</label>`).join("") || `<span class="muted">Aucun contact disponible.</span>`}</div>`;
 }
 
 function values(form) {
@@ -540,7 +639,62 @@ function values(form) {
   return data;
 }
 
-function localDateValue(date) {
+function activateTokenFields(container) {
+  container.querySelectorAll("[data-token-field]").forEach((fieldNode) => {
+    const input = fieldNode.querySelector("[data-token-input]");
+    const listNode = fieldNode.querySelector("[data-token-list]");
+    const hidden = fieldNode.querySelector("input[type='hidden']");
+    const tokens = splitCsv(hidden.value);
+
+    const renderTokens = () => {
+      listNode.innerHTML = tokens.map((token) => `<button type="button" class="token-chip" data-token-remove="${escapeHtml(token)}">${escapeHtml(token)}<span>×</span></button>`).join("");
+      hidden.value = tokens.join(", ");
+      listNode.querySelectorAll("[data-token-remove]").forEach((button) => button.addEventListener("click", () => {
+        const value = button.dataset.tokenRemove;
+        const index = tokens.indexOf(value);
+        if (index >= 0) tokens.splice(index, 1);
+        renderTokens();
+      }));
+    };
+
+    const pushToken = () => {
+      const value = input.value.trim();
+      if (!value || tokens.includes(value)) return;
+      tokens.push(value);
+      input.value = "";
+      renderTokens();
+    };
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === ",") {
+        event.preventDefault();
+        pushToken();
+      }
+      if (event.key === "Backspace" && !input.value && tokens.length) {
+        tokens.pop();
+        renderTokens();
+      }
+    });
+    input.addEventListener("blur", pushToken);
+    renderTokens();
+  });
+}
+
+function activateColorFields(container) {
+  container.querySelectorAll("[data-color-row]").forEach((row) => {
+    const colorInput = row.querySelector("input[type='color']");
+    const hexInput = row.querySelector("input[name='colorHex']");
+    colorInput.addEventListener("input", () => { hexInput.value = colorInput.value; });
+    hexInput.addEventListener("input", () => {
+      if (/^#[0-9a-fA-F]{6}$/.test(hexInput.value)) colorInput.value = hexInput.value;
+    });
+  });
+}
+
+function localDateValue(dateLike) {
+  if (!dateLike) return "";
+  const date = dateLike instanceof Date ? dateLike : new Date(dateLike);
+  if (Number.isNaN(date.getTime())) return "";
   const pad = (value) => String(value).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
@@ -553,8 +707,8 @@ function contactById(idValue) {
   return state.contacts.find((contact) => contact.id === idValue);
 }
 
-function contactsForProject(projectId) {
-  return state.contacts.filter((contact) => contact.projectId === projectId && contact.isActive);
+function contactsForProject(projectId, activeOnly = true) {
+  return state.contacts.filter((contact) => contact.projectId === projectId && (!activeOnly || contact.isActive !== false));
 }
 
 function toContactNames(values) {
@@ -571,6 +725,54 @@ function kindLabel(kind) {
     closure: "Clôture",
     attachment: "Pièce jointe"
   }[kind] || kind;
+}
+
+function relatedAttachments(incident) {
+  const eventIds = state.events.filter((event) => event.incidentId === incident.id).map((event) => event.id);
+  const checkpointIds = state.checkpoints.filter((checkpoint) => checkpoint.incidentId === incident.id).map((checkpoint) => checkpoint.id);
+  const ownerIds = new Set([incident.id, incident.closureId, ...eventIds, ...checkpointIds].filter(Boolean));
+  return state.attachments
+    .filter((attachment) => ownerIds.has(attachment.ownerId))
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+function attachmentScopeLabel(scope) {
+  return {
+    incident: "Incident",
+    event: "Événement",
+    checkpoint: "Point",
+    closure: "Clôture"
+  }[scope] || "Fichier";
+}
+
+function attachmentPreview(attachment) {
+  if (!attachment?.mimeType?.startsWith("image/") || !attachment.blob) return "";
+  const src = URL.createObjectURL(attachment.blob);
+  return `<img class="attachment-preview" src="${src}" alt="${escapeHtml(attachment.filename)}">`;
+}
+
+function normalizeColor(value) {
+  return /^#[0-9a-fA-F]{6}$/.test(value || "") ? value : "#2b85e4";
+}
+
+function splitCsv(value) {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function rowsToText(rows, key) {
+  return (rows || []).map((item) => item[key]).filter(Boolean).join("\n");
+}
+
+function projectExternalParticipants(projectId) {
+  return [...new Set(
+    state.checkpoints
+      .filter((checkpoint) => checkpoint.projectId === projectId)
+      .flatMap((checkpoint) => [...(checkpoint.invitedExternal || []), ...(checkpoint.presentExternal || [])])
+      .filter(Boolean)
+  )].sort((a, b) => a.localeCompare(b));
 }
 
 function empty(text) {
@@ -600,4 +802,66 @@ function downloadAttachment(attachmentId) {
   link.download = attachment.filename;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function printReport(reportId) {
+  const report = state.reports.find((item) => item.id === reportId);
+  if (!report) return;
+  const printWindow = window.open("", "_blank", "noopener,noreferrer");
+  if (!printWindow) {
+    showToast("Le navigateur bloque la fenêtre d'impression.");
+    return;
+  }
+  printWindow.document.write(`
+    <!doctype html>
+    <html lang="fr">
+      <head>
+        <meta charset="utf-8">
+        <title>${escapeHtml(report.title)}</title>
+        <style>${reportPrintCss()}</style>
+      </head>
+      <body>
+        ${report.html}
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => printWindow.print(), 250);
+}
+
+function reportPrintCss() {
+  return `
+    body { margin: 0; background: #ffffff; color: #102033; font: 14px/1.5 Inter, Arial, sans-serif; }
+    .report { max-width: 1080px; margin: 0 auto; padding: 40px 36px 56px; display: grid; gap: 28px; }
+    .report-hero { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: start; padding: 28px; border-radius: 24px; background: linear-gradient(135deg, #eaf4ff 0%, #f6fbff 100%); border: 1px solid #d9e6f4; }
+    .report-eyebrow { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: #527091; }
+    .report-hero h1 { margin: 0; font-size: 34px; line-height: 1.08; }
+    .report-summary { margin: 12px 0 0; font-size: 18px; color: #334a63; }
+    .report-severity { padding: 10px 16px; border-radius: 999px; background: #102033; color: #fff; font-size: 12px; font-weight: 700; letter-spacing: .08em; }
+    .report-dashboard { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+    .report-stat { padding: 18px; border-radius: 18px; background: #f6f9fc; border: 1px solid #dfe8f2; display: grid; gap: 6px; }
+    .report-stat-label { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: #617a95; }
+    .report-stat strong { font-size: 22px; line-height: 1.1; }
+    .report-grid, .report-dual, .report-checkpoints { display: grid; gap: 14px; }
+    .report-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .report-grid > div, .report-dual article, .report-note, .report-checkpoint { padding: 18px; border-radius: 18px; border: 1px solid #dfe8f2; background: #ffffff; }
+    .report-section { display: grid; gap: 14px; }
+    .report-section h2 { margin: 0; font-size: 20px; }
+    .report-dual { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .report-dual h3 { margin: 0 0 8px; font-size: 14px; text-transform: uppercase; letter-spacing: .06em; color: #617a95; }
+    .report-note p, .report-dual p, .report-checkpoint p { margin: 0; }
+    .report-timeline { position: relative; display: grid; gap: 12px; }
+    .report-timeline-item { display: grid; grid-template-columns: 180px 1fr; gap: 18px; align-items: start; }
+    .report-timeline-time { font-weight: 700; color: #21496d; padding-top: 6px; }
+    .report-timeline-body { position: relative; padding: 16px 18px; border-radius: 16px; border: 1px solid #dfe8f2; background: #fbfdff; }
+    .report-timeline-body p { margin: 8px 0 6px; }
+    .report-timeline-body span { color: #617a95; font-size: 12px; }
+    .report-checkpoint-top { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .report { padding: 18mm 14mm 20mm; }
+      .report-timeline-item, .report-checkpoint, .report-dual article, .report-stat { break-inside: avoid; }
+    }
+  `;
 }
