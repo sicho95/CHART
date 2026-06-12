@@ -95,8 +95,15 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   border-right: 1px solid var(--line);
   background: color-mix(in srgb, var(--panel) 96%, transparent);
 }
-.nav, .bottom-nav { display: flex; gap: 8px; }
+.nav, .bottom-nav, .tablet-nav { display: flex; gap: 8px; }
 .nav { flex-direction: column; }
+.tablet-nav {
+  display: none;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(14px);
+}
 .bottom-nav {
   position: fixed;
   left: 0;
@@ -135,6 +142,10 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .bottom-nav .nav-button span {
   font-size: 13px;
   font-weight: 650;
+}
+.tablet-nav .nav-button {
+  min-height: 48px;
+  padding: 10px 12px;
 }
 
 .panel {
@@ -466,7 +477,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .report-timeline-body span { color: #617a95; font-size: 12px; }
 .report-checkpoint-top { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 
-@media (max-width: 1279px) {
+@media (max-width: 1023px) {
   .topbar {
     padding: 10px 12px;
     gap: 10px;
@@ -523,11 +534,98 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   .incident-bottom-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .layout {
+    grid-template-rows: auto auto 1fr;
+    min-height: 100dvh;
+  }
+  .rail,
+  .bottom-nav {
+    display: none;
+  }
+  .tablet-nav {
+    display: flex;
+    position: sticky;
+    top: 64px;
+    z-index: 19;
+  }
+  .topbar {
+    padding: 10px 14px;
+  }
+  .main {
+    padding: 12px 12px 20px;
+    overflow: hidden;
+  }
+  .workspace,
+  .split,
+  .page-grid,
+  .workspace-incidents {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .workspace-incidents {
+    grid-template-columns: minmax(320px, 35vw) minmax(0, 1fr);
+    height: calc(100dvh - 154px);
+    align-items: stretch;
+  }
+  .incident-sidebar,
+  .incident-detail-panel {
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+  .incident-sidebar-shell {
+    min-height: 100%;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .incident-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: color-mix(in srgb, var(--panel) 98%, transparent);
+  }
+  .incident-list {
+    overflow: auto;
+    padding-right: 4px;
+  }
+  .incident-detail-shell {
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    min-height: 100%;
+    height: 100%;
+  }
+  .incident-detail-header {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+  }
+  .incident-detail-top {
+    border-bottom: 1px solid var(--line);
+  }
+  .incident-timeline-region {
+    min-height: 0;
+  }
+  .incident-timeline-scroll {
+    overflow: auto;
+    padding-right: 6px;
+    min-height: 0;
+  }
+  .incident-bottom-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .incident-subpanel-scroll {
+    max-height: 176px;
+    overflow: auto;
+    padding-right: 4px;
+  }
+}
+
 @media (min-width: 1280px) {
   .layout { grid-template-columns: 220px 1fr; grid-template-rows: auto 1fr; }
   .topbar { grid-column: 1 / -1; padding: 12px 20px; }
   .rail { display: block; grid-row: 2; }
-  .bottom-nav { display: none; }
+  .bottom-nav,
+  .tablet-nav { display: none; }
   .main { padding: 18px 20px 24px; overflow: hidden; }
   .workspace { grid-template-columns: minmax(320px, 420px) minmax(0, 1fr); align-items: start; }
   .workspace-incidents {
