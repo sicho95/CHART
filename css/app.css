@@ -48,6 +48,7 @@ body {
   color: var(--text);
   font-size: 16px;
   letter-spacing: 0;
+  overflow-x: hidden;
 }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
@@ -58,6 +59,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   min-height: 100vh;
   display: grid;
   grid-template-rows: auto 1fr auto;
+  width: 100%;
 }
 
 .topbar {
@@ -230,7 +232,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .btn.icon { width: 44px; padding: 0; }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 
-.cards { display: grid; gap: 10px; }
+.cards { display: grid; gap: 10px; align-content: start; }
 .incident-card, .project-card, .timeline-item {
   display: grid;
   gap: 8px;
@@ -285,7 +287,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .kpi-value { display: block; font-size: 20px; font-weight: 850; }
 .kpi-label { color: var(--muted); font-size: 12px; }
 
-.timeline { position: relative; display: grid; gap: 10px; }
+.timeline { position: relative; display: grid; gap: 10px; align-content: start; }
 .timeline-item { position: relative; margin-left: 14px; }
 .timeline-item::before {
   content: "";
@@ -313,15 +315,15 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .bar-fill { height: 100%; min-width: 4px; background: linear-gradient(90deg, var(--primary), var(--primary-strong)); border-radius: 999px; }
 
 .incident-sidebar-shell { display: grid; gap: 12px; }
-.incident-list { min-height: 0; }
+.incident-list { min-height: 0; grid-auto-rows: max-content; align-content: start; }
 .incident-detail-panel { min-height: 0; }
-.incident-detail-shell { display: grid; gap: 0; min-height: 100%; }
+.incident-detail-shell { display: grid; gap: 0; min-height: 100%; height: 100%; }
 .incident-detail-top, .incident-bottom-grid { display: grid; gap: 14px; }
-.incident-timeline-region { display: grid; gap: 12px; min-height: 0; }
-.incident-timeline-scroll { min-height: 280px; }
+.incident-timeline-region { display: grid; gap: 12px; min-height: 0; grid-template-rows: auto minmax(0, 1fr); }
+.incident-timeline-scroll { min-height: 280px; grid-auto-rows: max-content; align-content: start; }
 .incident-bottom-grid { border-top: 1px solid var(--line); }
 .incident-subpanel { display: grid; gap: 10px; min-height: 0; }
-.incident-subpanel-scroll { min-height: 0; }
+.incident-subpanel-scroll { min-height: 0; align-content: start; grid-auto-rows: max-content; }
 .attachment-preview {
   width: 100%;
   max-height: 120px;
@@ -457,18 +459,18 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   .topbar { grid-column: 1 / -1; padding: 12px 20px; }
   .rail { display: block; grid-row: 2; }
   .bottom-nav { display: none; }
-  .main { padding: 18px 20px 24px; }
+  .main { padding: 18px 20px 24px; overflow: hidden; }
   .workspace { grid-template-columns: minmax(320px, 420px) minmax(0, 1fr); align-items: start; }
   .workspace-incidents {
-    grid-template-columns: minmax(380px, 34vw) minmax(0, 1fr);
+    grid-template-columns: minmax(320px, 24vw) minmax(0, 1fr);
     height: calc(100vh - 107px);
     align-items: stretch;
   }
-  .incident-sidebar, .incident-detail-panel { min-height: 0; overflow: hidden; }
+  .incident-sidebar, .incident-detail-panel { min-height: 0; overflow: hidden; height: 100%; }
   .incident-sidebar-shell { min-height: 100%; grid-template-rows: auto minmax(0, 1fr); }
   .incident-toolbar { position: sticky; top: 0; z-index: 2; background: color-mix(in srgb, var(--panel) 98%, transparent); }
   .incident-list { overflow: auto; padding-right: 4px; }
-  .incident-detail-shell { grid-template-rows: auto auto minmax(0, 1fr) auto; min-height: 100%; }
+  .incident-detail-shell { grid-template-rows: auto auto minmax(0, 1fr) auto; min-height: 100%; height: 100%; }
   .incident-detail-header { position: sticky; top: 0; z-index: 3; }
   .incident-detail-top { grid-template-columns: minmax(0, 1fr); border-bottom: 1px solid var(--line); }
   .incident-timeline-region { min-height: 0; }
@@ -487,7 +489,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 }
 
 @media (min-width: 1180px) {
-  .workspace-incidents { grid-template-columns: minmax(430px, 36vw) minmax(0, 1fr); }
+  .workspace-incidents { grid-template-columns: minmax(340px, 26vw) minmax(0, 1fr); }
   .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
