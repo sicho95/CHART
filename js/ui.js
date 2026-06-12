@@ -50,7 +50,6 @@ export function renderApp(root) {
           <button class="btn incident" data-action="new-incident">${icon("i-plus")}<span>Incident</span></button>
         </div>
       </header>
-      ${navMarkup("tablet-nav")}
       <aside class="rail">${navMarkup("nav")}</aside>
       <main class="main">
         ${state.online ? "" : `<div class="offline">Vous êtes hors ligne, les données restent disponibles localement.</div>`}
