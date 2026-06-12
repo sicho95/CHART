@@ -103,7 +103,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   right: 0;
   bottom: 0;
   z-index: 30;
-  padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+  padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
   background: color-mix(in srgb, var(--panel) 94%, transparent);
   border-top: 1px solid var(--line);
   backdrop-filter: blur(14px);
@@ -128,6 +128,14 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   font-weight: 700;
 }
 .nav-button span { font-size: 12px; }
+.bottom-nav .nav-button {
+  min-height: 56px;
+  padding: 10px 8px;
+}
+.bottom-nav .nav-button span {
+  font-size: 13px;
+  font-weight: 650;
+}
 
 .panel {
   background: var(--panel);
@@ -458,7 +466,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .report-timeline-body span { color: #617a95; font-size: 12px; }
 .report-checkpoint-top { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 
-@media (max-width: 1023px) {
+@media (max-width: 1279px) {
   .topbar {
     padding: 10px 12px;
     gap: 10px;
@@ -482,7 +490,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   }
   .top-actions .btn.incident span { white-space: nowrap; }
   .main {
-    padding: 12px 12px 84px;
+    padding: 12px 12px 96px;
     width: 100%;
   }
   .workspace,
@@ -504,6 +512,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   }
   .incident-detail-shell,
   .incident-sidebar-shell,
+  .incident-timeline-region,
   .incident-list,
   .incident-timeline-scroll,
   .incident-subpanel-scroll {
@@ -514,7 +523,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   .incident-bottom-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1280px) {
   .layout { grid-template-columns: 220px 1fr; grid-template-rows: auto 1fr; }
   .topbar { grid-column: 1 / -1; padding: 12px 20px; }
   .rail { display: block; grid-row: 2; }
@@ -548,7 +557,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   .report-timeline-item { grid-template-columns: 180px 1fr; align-items: start; }
 }
 
-@media (min-width: 1180px) {
+@media (min-width: 1440px) {
   .workspace-incidents { grid-template-columns: minmax(340px, 26vw) minmax(0, 1fr); }
   .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
