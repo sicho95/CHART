@@ -143,7 +143,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
-.panel-pad { padding: 14px; }
+.panel-pad { padding: 12px; }
 .panel-header {
   display: flex;
   align-items: center;
@@ -162,7 +162,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .filter-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
 .select-shell {
   position: relative;
-  min-width: 132px;
+  min-width: 126px;
 }
 .select-shell .select {
   padding-right: 32px;
@@ -171,15 +171,6 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   background: var(--panel-2);
   border-color: color-mix(in srgb, var(--primary) 24%, var(--line));
 }
-.select-ghost {
-  position: absolute;
-  inset: 0 32px 0 12px;
-  display: flex;
-  align-items: center;
-  color: var(--muted);
-  pointer-events: none;
-}
-
 .input, .select, .textarea, .token-input {
   width: 100%;
   min-height: 46px;
@@ -273,6 +264,12 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 }
 .incident-card.active, .project-card.active { border-color: var(--primary); box-shadow: inset 3px 0 0 var(--primary); }
 .card-top { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; }
+.compact-heading {
+  justify-content: flex-start;
+  align-items: baseline;
+  gap: 4px;
+}
+.compact-heading .card-meta { margin-left: 0; }
 .card-title { font-weight: 800; line-height: 1.25; }
 .card-meta, .muted { color: var(--muted); font-size: 13px; }
 .line-clamp { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -306,21 +303,26 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .detail-header {
   background: color-mix(in srgb, var(--panel) 96%, transparent);
   border-bottom: 1px solid var(--line);
-  padding: 14px;
+  padding: 10px 12px;
 }
-.detail-title { margin: 0 0 8px; font-size: 21px; line-height: 1.18; }
-.detail-actions { display: flex; gap: 8px; overflow-x: auto; padding-top: 10px; }
+.detail-title { margin: 0 0 6px; font-size: 21px; line-height: 1.15; }
+.detail-actions { display: flex; gap: 7px; overflow-x: auto; padding-top: 8px; }
+.detail-header .btn { min-height: 40px; padding: 8px 10px; }
+.disabled-label {
+  opacity: .5;
+  pointer-events: none;
+}
 .incident-detail-top section p {
-  margin: 6px 0;
-  line-height: 1.35;
+  margin: 3px 0;
+  line-height: 1.25;
 }
 .kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.kpi { padding: 12px; background: var(--panel-2); border-radius: var(--radius); }
-.kpi-value { display: block; font-size: 20px; font-weight: 850; }
+.kpi { padding: 8px 10px; background: var(--panel-2); border-radius: var(--radius); }
+.kpi-value { display: block; font-size: 18px; font-weight: 850; line-height: 1.15; }
 .kpi-label { color: var(--muted); font-size: 12px; }
 
 .timeline { position: relative; display: grid; gap: 10px; align-content: start; }
-.timeline-item { position: relative; margin-left: 14px; }
+.timeline-item { position: relative; margin-left: 14px; padding-right: 34px; }
 .timeline-item::before {
   content: "";
   position: absolute;
@@ -351,10 +353,11 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .incident-detail-panel { min-height: 0; }
 .incident-detail-shell { display: grid; gap: 0; min-height: 100%; height: 100%; }
 .incident-detail-top, .incident-bottom-grid { display: grid; gap: 14px; }
-.incident-timeline-region { display: grid; gap: 12px; min-height: 0; grid-template-rows: auto minmax(0, 1fr); }
+.incident-detail-top { gap: 8px; }
+.incident-timeline-region { display: grid; gap: 8px; min-height: 0; grid-template-rows: auto minmax(0, 1fr); }
 .incident-timeline-scroll { min-height: 280px; grid-auto-rows: max-content; align-content: start; }
 .incident-bottom-grid { border-top: 1px solid var(--line); align-content: start; }
-.incident-subpanel { display: grid; gap: 10px; min-height: 0; }
+.incident-subpanel { display: grid; gap: 8px; min-height: 0; }
 .incident-subpanel-scroll { min-height: 0; align-content: start; grid-auto-rows: max-content; }
 .attachment-preview {
   width: 100%;
@@ -370,6 +373,14 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   border-radius: 8px;
   border: 1px solid var(--line);
   flex-shrink: 0;
+}
+.incident-subpanel .incident-card {
+  padding: 10px;
+  gap: 8px;
+}
+.incident-subpanel .attachment-preview {
+  max-height: 88px;
+  object-fit: cover;
 }
 .context-attachments {
   display: grid;
@@ -400,6 +411,26 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .attachment-chip-meta span {
   color: var(--muted);
   font-size: 12px;
+}
+.inline-edit {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+.inline-edit:hover {
+  border-color: var(--line);
+  background: var(--panel-2);
+  color: var(--text);
 }
 
 .modal-backdrop {

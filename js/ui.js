@@ -8,6 +8,7 @@ import {
   downloadExport,
   lastExportAt,
   replaceFromImport,
+  reopenIncident,
   resetWithSeed,
   saveCheckpoint,
   saveContact,
@@ -101,10 +102,10 @@ function incidentToolbar() {
   return `<div class="toolbar incident-toolbar">
     <div class="search-box">${icon("i-search")}<input class="input" data-input="search" value="${escapeHtml(state.search)}" placeholder="Rechercher titre, déclarant, owner, résumé"></div>
     <div class="filter-row">
-      ${selectFilter("projectId", "Projet", "Tous les projets", state.projects.map((project) => [project.id, project.name]))}
-      ${selectFilter("severity", "Gravité", "Toutes les gravités", DEFAULT_SEVERITIES.map((item) => [item, item]))}
-      ${selectFilter("status", "Statut", "Tous les statuts", DEFAULT_STATUSES.map((item) => [item, labelStatus(item)]))}
-      ${selectFilter("type", "Type", "Tous les types", DEFAULT_TYPES.map((item) => [item, item]))}
+      ${selectFilter("projectId", "Projet", "Tous", state.projects.map((project) => [project.id, project.name]))}
+      ${selectFilter("severity", "Gravité", "Toutes", DEFAULT_SEVERITIES.map((item) => [item, item]))}
+      ${selectFilter("status", "Statut", "Tous", DEFAULT_STATUSES.map((item) => [item, labelStatus(item)]))}
+      ${selectFilter("type", "Type", "Tous", DEFAULT_TYPES.map((item) => [item, item]))}
     </div>
   </div>`;
 }
@@ -134,11 +135,13 @@ function incidentDetail(incident) {
   const owner = contactById(incident.ownerContactId);
   const events = state.events.filter((event) => event.incidentId === incident.id);
   const checkpoints = state.checkpoints.filter((checkpoint) => checkpoint.incidentId === incident.id);
+  const timelineEntries = incidentTimelineEntries(incident, events, checkpoints);
   const closure = state.closures.find((item) => item.id === incident.closureId);
   const report = state.reports.find((item) => item.id === closure?.generatedReportId);
   const attachments = incidentLevelAttachments(incident);
   const frozenPoints = checkpoints.filter((item) => item.status === "frozen");
   const draftPoints = checkpoints.filter((item) => item.status === "draft");
+  const isClosed = incident.status === "clos";
 
   return `
     <div class="incident-detail-shell">
@@ -151,11 +154,11 @@ function incidentDetail(incident) {
           <span class="badge">${escapeHtml(owner?.fullName || "Pilote non renseigné")}</span>
         </div>
         <div class="detail-actions">
-          <button class="btn" data-action="event" data-incident="${incident.id}">Ajouter événement</button>
-          <button class="btn" data-action="checkpoint" data-incident="${incident.id}">Préparer point</button>
-          <button class="btn" data-action="notify" data-incident="${incident.id}">Marquer avertis</button>
-          <label class="btn"><input type="file" hidden multiple data-file-attachments="${incident.id}">Ajouter fichier</label>
-          <button class="btn success" data-action="close" data-incident="${incident.id}" ${incident.status === "clos" ? "disabled" : ""}>Clôturer</button>
+          <button class="btn" data-action="event" data-incident="${incident.id}" ${isClosed ? "disabled" : ""}>Ajouter événement</button>
+          <button class="btn" data-action="checkpoint" data-incident="${incident.id}" ${isClosed ? "disabled" : ""}>Préparer point</button>
+          <button class="btn" data-action="notify" data-incident="${incident.id}" ${isClosed ? "disabled" : ""}>Marquer avertis</button>
+          <label class="btn ${isClosed ? "disabled-label" : ""}"><input type="file" hidden multiple data-file-attachments="${incident.id}" ${isClosed ? "disabled" : ""}>Ajouter fichier</label>
+          ${isClosed ? `<button class="btn primary" data-action="reopen" data-incident="${incident.id}">Réouvrir</button>` : `<button class="btn success" data-action="close" data-incident="${incident.id}">Clôturer</button>`}
           ${report ? `<button class="btn" data-action="show-report" data-report="${report.id}">Voir rapport</button>` : ""}
         </div>
       </div>
@@ -163,7 +166,7 @@ function incidentDetail(incident) {
         <section class="kpis">
           <div class="kpi"><span class="kpi-value">${formatDuration(incident.declaredAt, incident.closedAt || undefined)}</span><span class="kpi-label">Durée</span></div>
           <div class="kpi"><span class="kpi-value">${formatDate(incident.nextCheckpointAt)}</span><span class="kpi-label">Prochain point</span></div>
-          <div class="kpi"><span class="kpi-value">${events.length}</span><span class="kpi-label">Entrées timeline</span></div>
+          <div class="kpi"><span class="kpi-value">${timelineEntries.length}</span><span class="kpi-label">Entrées timeline</span></div>
           <div class="kpi"><span class="kpi-value">${frozenPoints.length}</span><span class="kpi-label">Points figés</span></div>
         </section>
         <section>
@@ -174,24 +177,29 @@ function incidentDetail(incident) {
         </section>
       </div>
       <section class="incident-timeline-region panel-pad">
-        <div class="card-top"><h2 class="panel-title">Timeline</h2><span class="card-meta">${events.length} entrée(s)</span></div>
-        <div class="timeline incident-timeline-scroll">${events.map(timelineItem).join("") || empty("Aucun événement.")}</div>
+        <div class="card-top compact-heading"><h2 class="panel-title">Timeline :</h2><span class="card-meta">${timelineEntries.length} entrée(s)</span></div>
+        <div class="timeline incident-timeline-scroll">${timelineEntries.map(timelineEntryItem).join("") || empty("Aucun événement.")}</div>
       </section>
       <div class="incident-bottom-grid panel-pad">
         <section class="incident-subpanel">
-          <div class="card-top"><h2 class="panel-title">Points intermédiaires</h2><span class="card-meta">${draftPoints.length} brouillon(s) · ${frozenPoints.length} figé(s)</span></div>
+          <div class="card-top compact-heading"><h2 class="panel-title">Points intermédiaires :</h2><span class="card-meta">${draftPoints.length} brouillon(s)</span></div>
           <div class="cards incident-subpanel-scroll">
-            ${checkpoints.length ? checkpoints.map((checkpoint) => checkpointCard(incident, checkpoint)).join("") : empty("Aucun point préparé.")}
+            ${draftPoints.length ? draftPoints.map((checkpoint) => checkpointCard(incident, checkpoint)).join("") : empty("Aucun brouillon.")}
           </div>
         </section>
         <section class="incident-subpanel">
-          <div class="card-top"><h2 class="panel-title">Pièces jointes</h2><span class="card-meta">${attachments.length} fichier(s)</span></div>
+          <div class="card-top compact-heading"><h2 class="panel-title">Pièces jointes :</h2><span class="card-meta">${attachments.length} fichier(s)</span></div>
           <div class="cards incident-subpanel-scroll">
             ${attachments.length ? attachments.map(attachmentCard).join("") : empty("Aucune pièce jointe.")}
           </div>
         </section>
       </div>
     </div>`;
+}
+
+function timelineEntryItem(entry) {
+  if (entry.type === "checkpoint") return checkpointTimelineItem(entry.checkpoint);
+  return timelineItem(entry.event);
 }
 
 function timelineItem(event) {
@@ -201,6 +209,22 @@ function timelineItem(event) {
     <div>${escapeHtml(event.message)}</div>
     <div class="card-meta">${escapeHtml(event.author || "CHART")}</div>
     ${attachments.length ? `<div class="context-attachments">${attachments.map(contextAttachmentChip).join("")}</div>` : ""}
+  </article>`;
+}
+
+function checkpointTimelineItem(checkpoint) {
+  const attachments = state.attachments.filter((attachment) => attachment.ownerId === checkpoint.id);
+  const incident = state.incidents.find((item) => item.id === checkpoint.incidentId);
+  const canEdit = incident?.status !== "clos";
+  return `<article class="timeline-item checkpoint-timeline-item">
+    <div class="card-top">
+      <strong>Point figé</strong>
+      <span class="card-meta">${formatDate(checkpoint.heldAt || checkpoint.scheduledAt)}</span>
+    </div>
+    <div>${escapeHtml(checkpoint.situationSummary || "Point sans synthèse")}</div>
+    <div class="card-meta">${escapeHtml(checkpoint.mode || "Point")}${checkpoint.modifiedAt ? ` · <em>modifié le ${formatDate(checkpoint.modifiedAt)}</em>` : ""}</div>
+    ${attachments.length ? `<div class="context-attachments">${attachments.map(contextAttachmentChip).join("")}</div>` : ""}
+    ${canEdit ? `<button class="inline-edit" data-action="checkpoint-edit" data-incident="${checkpoint.incidentId}" data-checkpoint="${checkpoint.id}" title="Modifier le point">✎</button>` : ""}
   </article>`;
 }
 
@@ -214,9 +238,9 @@ function checkpointCard(incident, checkpoint) {
     <div>${escapeHtml(checkpoint.situationSummary || "Point sans synthèse")}</div>
     <div class="card-meta">Reste à faire: ${escapeHtml(checkpoint.remainingActions || "Non renseigné")}</div>
     ${checkpointAttachments.length ? `<div class="context-attachments">${checkpointAttachments.map(contextAttachmentChip).join("")}</div>` : `<div class="card-meta">Sans fichier</div>`}
-    <div class="detail-actions">
-      <button class="btn" data-action="checkpoint-edit" data-incident="${incident.id}" data-checkpoint="${checkpoint.id}">${checkpoint.status === "draft" ? "Modifier" : "Consulter"}</button>
-    </div>
+    ${incident.status !== "clos" ? `<div class="detail-actions">
+      <button class="btn" data-action="checkpoint-edit" data-incident="${incident.id}" data-checkpoint="${checkpoint.id}">Modifier</button>
+    </div>` : ""}
   </article>`;
 }
 
@@ -333,7 +357,9 @@ function bindEvents(root) {
     setRoute("incidents");
   }));
   root.querySelectorAll("[data-select-project]").forEach((button) => button.addEventListener("click", () => selectProject(button.dataset.selectProject)));
-  root.querySelectorAll("[data-filter]").forEach((input) => input.addEventListener("input", () => setFilter(input.dataset.filter, input.value)));
+  root.querySelectorAll("[data-filter]").forEach((input) => input.addEventListener("input", () => {
+    setFilter(input.dataset.filter, input.value === "__all" ? "" : input.value);
+  }));
   root.querySelector("[data-input='search']")?.addEventListener("input", (event) => setSearch(event.target.value));
   root.querySelectorAll("[data-action]").forEach((button) => button.addEventListener("click", () => handleAction(button)));
   root.querySelectorAll("[data-file-attachments]").forEach((input) => input.addEventListener("change", async () => {
@@ -361,6 +387,7 @@ function handleAction(button) {
   if (action === "checkpoint-edit") return openCheckpointModal(button.dataset.incident, button.dataset.checkpoint);
   if (action === "notify") return openNotifyModal(button.dataset.incident);
   if (action === "close") return openClosureModal(button.dataset.incident);
+  if (action === "reopen") return openReopenModal(button.dataset.incident);
   if (action === "project") return openProjectModal(button.dataset.project);
   if (action === "contact") return openContactModal(button.dataset.project);
   if (action === "contact-edit") return openContactModal(contactById(button.dataset.contact)?.projectId, button.dataset.contact);
@@ -427,6 +454,7 @@ function openCheckpointModal(incidentId, checkpointId = "") {
   const checkpoint = checkpointId ? state.checkpoints.find((item) => item.id === checkpointId) : null;
   const contacts = contactsForProject(incident?.projectId);
   const suggestions = projectExternalParticipants(incident?.projectId);
+  const isFrozen = checkpoint?.status === "frozen";
   openModal(checkpoint ? "Modifier le point" : "Point intermédiaire", `<form class="form-grid">
     <input type="hidden" name="id" value="${checkpoint?.id || ""}">
     <input type="hidden" name="incidentId" value="${incidentId}">
@@ -457,7 +485,10 @@ function openCheckpointModal(incidentId, checkpointId = "") {
     await saveCheckpoint(values(form), submitter?.dataset.freeze === "true", [...form.querySelector("[name='attachments']").files]);
     closeModal(modal);
     showToast(submitter?.dataset.freeze === "true" ? "Le point a été figé et ajouté à la timeline." : "Brouillon enregistré.");
-  }, [{ label: "Enregistrer brouillon", variant: "", attrs: "data-freeze='false'" }, { label: "Figer le point", variant: "primary", attrs: "data-freeze='true'" }]);
+  }, isFrozen
+    ? [{ label: "Enregistrer", variant: "primary", attrs: "data-freeze='true'" }]
+    : [{ label: "Enregistrer brouillon", variant: "", attrs: "data-freeze='false'" }, { label: "Figer le point", variant: "primary", attrs: "data-freeze='true'" }]
+  );
 }
 
 function openNotifyModal(incidentId) {
@@ -491,6 +522,18 @@ function openClosureModal(incidentId) {
     await closeIncident(values(form));
     closeModal(modal);
     showToast("Incident clos et rapport généré.");
+  });
+}
+
+function openReopenModal(incidentId) {
+  openModal("Réouvrir l'incident", `<form class="form-grid">
+    <input type="hidden" name="incidentId" value="${incidentId}">
+    ${field("author", "Auteur", "CHART")}
+    ${field("reason", "Motif de réouverture", "", "textarea", true, "wide")}
+  </form>`, async (form, modal) => {
+    await reopenIncident(values(form));
+    closeModal(modal);
+    showToast("Incident réouvert.");
   });
 }
 
@@ -587,14 +630,34 @@ function filteredIncidents() {
     .sort((a, b) => new Date(b.declaredAt) - new Date(a.declaredAt));
 }
 
+function incidentTimelineEntries(incident, events, checkpoints) {
+  const eventEntries = events
+    .filter((event) => event.kind !== "checkpoint_frozen")
+    .map((event) => ({
+      type: "event",
+      event,
+      at: event.createdAt
+    }));
+  const checkpointEntries = checkpoints
+    .filter((checkpoint) => checkpoint.status === "frozen")
+    .map((checkpoint) => ({
+      type: "checkpoint",
+      checkpoint,
+      at: checkpoint.heldAt || checkpoint.scheduledAt || checkpoint.updatedAt
+    }));
+  return [...eventEntries, ...checkpointEntries]
+    .filter((entry) => entry.at)
+    .sort((a, b) => new Date(a.at) - new Date(b.at));
+}
+
 function selectFilter(name, placeholder, allLabel, options) {
   const active = Boolean(state.filters[name]);
   return `<div class="select-shell ${active ? "filter-active" : ""}">
     <select class="select" data-filter="${name}">
-      <option value="" ${!active ? "selected" : ""}>${escapeHtml(allLabel)}</option>
+      <option value="" disabled hidden ${!active ? "selected" : ""}>${escapeHtml(placeholder)}</option>
+      <option value="__all">${escapeHtml(allLabel)}</option>
       ${options.map(([value, label]) => `<option value="${escapeHtml(value)}" ${state.filters[name] === value ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}
     </select>
-    ${!active ? `<span class="select-ghost">${escapeHtml(placeholder)}</span>` : ""}
   </div>`;
 }
 

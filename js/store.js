@@ -255,6 +255,7 @@ export async function updateIncidentStatus(incidentId, status) {
 export async function addEvent(form, files = []) {
   const incident = state.incidents.find((item) => item.id === form.incidentId);
   if (!incident) return null;
+  if (incident.status === "clos" && !["closure", "reopen"].includes(form.kind)) return null;
   const event = {
     id: id("evt"),
     incidentId: incident.id,
@@ -283,14 +284,18 @@ export async function addEvent(form, files = []) {
 export async function saveCheckpoint(form, freeze = false, files = []) {
   const incident = state.incidents.find((item) => item.id === form.incidentId);
   if (!incident) return null;
+  if (incident.status === "clos") return null;
   const existing = form.id ? state.checkpoints.find((item) => item.id === form.id) : null;
+  const nextScheduledAt = form.scheduledAt ? new Date(form.scheduledAt).toISOString() : nowIso();
+  const nextHeldAt = freeze ? (form.heldAt ? new Date(form.heldAt).toISOString() : (existing?.heldAt || nowIso())) : (form.heldAt ? new Date(form.heldAt).toISOString() : null);
+  const changed = existing ? checkpointChanged(existing, form, freeze, nextScheduledAt, nextHeldAt) : false;
   const checkpoint = {
     id: existing?.id || id("chk"),
     incidentId: incident.id,
     projectId: incident.projectId,
     status: freeze ? "frozen" : "draft",
-    scheduledAt: form.scheduledAt ? new Date(form.scheduledAt).toISOString() : nowIso(),
-    heldAt: freeze ? (form.heldAt ? new Date(form.heldAt).toISOString() : nowIso()) : (form.heldAt ? new Date(form.heldAt).toISOString() : null),
+    scheduledAt: nextScheduledAt,
+    heldAt: nextHeldAt,
     mode: form.mode || "visio",
     invitedContactIds: toArray(form.invitedContactIds),
     invitedExternal: splitList(form.invitedExternal, []),
@@ -306,7 +311,8 @@ export async function saveCheckpoint(form, freeze = false, files = []) {
     nextCheckpointAt: form.nextCheckpointAt ? new Date(form.nextCheckpointAt).toISOString() : "",
     notifiedContacts: toArray(form.notifiedContacts),
     createdAt: existing?.createdAt || nowIso(),
-    updatedAt: nowIso()
+    updatedAt: nowIso(),
+    modifiedAt: changed ? nowIso() : existing?.modifiedAt || null
   };
   incident.checkpointIds = [...new Set([...(incident.checkpointIds || []), checkpoint.id])];
   incident.nextCheckpointAt = checkpoint.nextCheckpointAt || incident.nextCheckpointAt;
@@ -317,7 +323,7 @@ export async function saveCheckpoint(form, freeze = false, files = []) {
   if (files.length) {
     await addAttachments("checkpoint", checkpoint.id, files);
   }
-  if (freeze) {
+  if (freeze && existing?.status !== "frozen") {
     await addEvent({
       incidentId: incident.id,
       kind: "checkpoint_frozen",
@@ -334,6 +340,7 @@ export async function saveCheckpoint(form, freeze = false, files = []) {
 export async function closeIncident(form) {
   const incident = state.incidents.find((item) => item.id === form.incidentId);
   if (!incident) return null;
+  if (incident.status === "clos") return null;
   const finalSummary = form.finalSummary || form.resolutionSummary || "Incident clos.";
   const closure = {
     id: id("cls"),
@@ -368,6 +375,25 @@ export async function closeIncident(form) {
   await put("incidents", incident);
   await addEvent({ incidentId: incident.id, kind: "closure", author: "CHART", message: `Incident clos: ${closure.finalSummary}` });
   return closure;
+}
+
+export async function reopenIncident(form) {
+  const incident = state.incidents.find((item) => item.id === form.incidentId);
+  if (!incident || incident.status !== "clos") return null;
+  const reason = String(form.reason || "").trim();
+  if (!reason) throw new Error("Le motif de réouverture est obligatoire.");
+  incident.status = "en_cours";
+  incident.closedAt = "";
+  incident.currentSummary = `Réouverture: ${reason}`;
+  incident.updatedAt = nowIso();
+  await put("incidents", incident);
+  await addEvent({
+    incidentId: incident.id,
+    kind: "reopen",
+    author: form.author || "CHART",
+    message: `Incident réouvert: ${reason}`
+  });
+  return incident;
 }
 
 export async function addAttachments(scope, ownerId, files) {
@@ -465,4 +491,17 @@ function rowsFromTextarea(value, prefix) {
 
 function actionRows(value) {
   return splitList(value, []).map((label) => ({ id: id("act"), label, owner: "", dueAt: "", status: "open" }));
+}
+
+function checkpointChanged(existing, form, freeze, nextScheduledAt, nextHeldAt) {
+  return [
+    existing.status !== (freeze ? "frozen" : "draft"),
+    existing.scheduledAt !== nextScheduledAt,
+    (existing.heldAt || null) !== (nextHeldAt || null),
+    existing.mode !== (form.mode || "visio"),
+    existing.situationSummary !== (form.situationSummary || ""),
+    existing.doneSinceLastCheckpoint !== (form.doneSinceLastCheckpoint || ""),
+    existing.remainingActions !== (form.remainingActions || ""),
+    existing.blockersRisks !== (form.blockersRisks || "")
+  ].some(Boolean);
 }
