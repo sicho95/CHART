@@ -101,10 +101,10 @@ function incidentToolbar() {
   return `<div class="toolbar incident-toolbar">
     <div class="search-box">${icon("i-search")}<input class="input" data-input="search" value="${escapeHtml(state.search)}" placeholder="Rechercher titre, déclarant, owner, résumé"></div>
     <div class="filter-row">
-      ${selectFilter("projectId", "Tous projets", state.projects.map((project) => [project.id, project.name]))}
-      ${selectFilter("severity", "Gravité", DEFAULT_SEVERITIES.map((item) => [item, item]))}
-      ${selectFilter("status", "Statut", DEFAULT_STATUSES.map((item) => [item, labelStatus(item)]))}
-      ${selectFilter("type", "Type", DEFAULT_TYPES.map((item) => [item, item]))}
+      ${selectFilter("projectId", "Projet", "Tous les projets", state.projects.map((project) => [project.id, project.name]))}
+      ${selectFilter("severity", "Gravité", "Toutes les gravités", DEFAULT_SEVERITIES.map((item) => [item, item]))}
+      ${selectFilter("status", "Statut", "Tous les statuts", DEFAULT_STATUSES.map((item) => [item, labelStatus(item)]))}
+      ${selectFilter("type", "Type", "Tous les types", DEFAULT_TYPES.map((item) => [item, item]))}
     </div>
   </div>`;
 }
@@ -136,7 +136,7 @@ function incidentDetail(incident) {
   const checkpoints = state.checkpoints.filter((checkpoint) => checkpoint.incidentId === incident.id);
   const closure = state.closures.find((item) => item.id === incident.closureId);
   const report = state.reports.find((item) => item.id === closure?.generatedReportId);
-  const attachments = relatedAttachments(incident);
+  const attachments = incidentLevelAttachments(incident);
   const frozenPoints = checkpoints.filter((item) => item.status === "frozen");
   const draftPoints = checkpoints.filter((item) => item.status === "draft");
 
@@ -195,10 +195,12 @@ function incidentDetail(incident) {
 }
 
 function timelineItem(event) {
+  const attachments = state.attachments.filter((attachment) => attachment.ownerId === event.id);
   return `<article class="timeline-item">
     <div class="card-top"><strong>${escapeHtml(kindLabel(event.kind))}</strong><span class="card-meta">${formatDate(event.createdAt)}</span></div>
     <div>${escapeHtml(event.message)}</div>
     <div class="card-meta">${escapeHtml(event.author || "CHART")}</div>
+    ${attachments.length ? `<div class="context-attachments">${attachments.map(contextAttachmentChip).join("")}</div>` : ""}
   </article>`;
 }
 
@@ -211,7 +213,7 @@ function checkpointCard(incident, checkpoint) {
     </div>
     <div>${escapeHtml(checkpoint.situationSummary || "Point sans synthèse")}</div>
     <div class="card-meta">Reste à faire: ${escapeHtml(checkpoint.remainingActions || "Non renseigné")}</div>
-    <div class="card-meta">${checkpointAttachments.length ? `${checkpointAttachments.length} fichier(s)` : "Sans fichier"}</div>
+    ${checkpointAttachments.length ? `<div class="context-attachments">${checkpointAttachments.map(contextAttachmentChip).join("")}</div>` : `<div class="card-meta">Sans fichier</div>`}
     <div class="detail-actions">
       <button class="btn" data-action="checkpoint-edit" data-incident="${incident.id}" data-checkpoint="${checkpoint.id}">${checkpoint.status === "draft" ? "Modifier" : "Consulter"}</button>
     </div>
@@ -241,11 +243,11 @@ function timelinePage() {
     <section class="panel panel-pad">
       <div class="toolbar">
         <div class="filter-row">
-          ${selectFilter("projectId", "Tous projets", state.projects.map((project) => [project.id, project.name]))}
+          ${selectFilter("projectId", "Projet", "Tous les projets", state.projects.map((project) => [project.id, project.name]))}
           <input class="input" type="datetime-local" step="60" data-filter="from" value="${escapeHtml(filters.from)}">
           <input class="input" type="datetime-local" step="60" data-filter="to" value="${escapeHtml(filters.to)}">
-          ${selectFilter("severity", "Gravité", DEFAULT_SEVERITIES.map((item) => [item, item]))}
-          ${selectFilter("status", "Statut", DEFAULT_STATUSES.map((item) => [item, labelStatus(item)]))}
+          ${selectFilter("severity", "Gravité", "Toutes les gravités", DEFAULT_SEVERITIES.map((item) => [item, item]))}
+          ${selectFilter("status", "Statut", "Tous les statuts", DEFAULT_STATUSES.map((item) => [item, labelStatus(item)]))}
         </div>
       </div>
       <div class="kpis">
@@ -585,8 +587,15 @@ function filteredIncidents() {
     .sort((a, b) => new Date(b.declaredAt) - new Date(a.declaredAt));
 }
 
-function selectFilter(name, placeholder, options) {
-  return `<select class="select" data-filter="${name}"><option value="">${placeholder}</option>${options.map(([value, label]) => `<option value="${escapeHtml(value)}" ${state.filters[name] === value ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select>`;
+function selectFilter(name, placeholder, allLabel, options) {
+  const active = Boolean(state.filters[name]);
+  return `<div class="select-shell ${active ? "filter-active" : ""}">
+    <select class="select" data-filter="${name}">
+      <option value="" ${!active ? "selected" : ""}>${escapeHtml(allLabel)}</option>
+      ${options.map(([value, label]) => `<option value="${escapeHtml(value)}" ${state.filters[name] === value ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}
+    </select>
+    ${!active ? `<span class="select-ghost">${escapeHtml(placeholder)}</span>` : ""}
+  </div>`;
 }
 
 function field(name, label, value = "", type = "text", required = false, extraClass = "") {
@@ -727,13 +736,21 @@ function kindLabel(kind) {
   }[kind] || kind;
 }
 
-function relatedAttachments(incident) {
-  const eventIds = state.events.filter((event) => event.incidentId === incident.id).map((event) => event.id);
-  const checkpointIds = state.checkpoints.filter((checkpoint) => checkpoint.incidentId === incident.id).map((checkpoint) => checkpoint.id);
-  const ownerIds = new Set([incident.id, incident.closureId, ...eventIds, ...checkpointIds].filter(Boolean));
+function incidentLevelAttachments(incident) {
+  const ownerIds = new Set([incident.id].filter(Boolean));
   return state.attachments
     .filter((attachment) => ownerIds.has(attachment.ownerId))
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+function contextAttachmentChip(attachment) {
+  return `<article class="attachment-chip">
+    ${attachmentPreview(attachment, "attachment-preview-small")}
+    <div class="attachment-chip-meta">
+      <strong>${escapeHtml(attachment.filename)}</strong>
+      <span>${Math.round(attachment.size / 1024)} Ko</span>
+    </div>
+  </article>`;
 }
 
 function attachmentScopeLabel(scope) {
@@ -745,10 +762,10 @@ function attachmentScopeLabel(scope) {
   }[scope] || "Fichier";
 }
 
-function attachmentPreview(attachment) {
+function attachmentPreview(attachment, className = "attachment-preview") {
   if (!attachment?.mimeType?.startsWith("image/") || !attachment.blob) return "";
   const src = URL.createObjectURL(attachment.blob);
-  return `<img class="attachment-preview" src="${src}" alt="${escapeHtml(attachment.filename)}">`;
+  return `<img class="${className}" src="${src}" alt="${escapeHtml(attachment.filename)}">`;
 }
 
 function normalizeColor(value) {
