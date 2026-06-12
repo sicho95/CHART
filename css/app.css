@@ -229,6 +229,42 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   background: transparent;
   box-shadow: none !important;
 }
+.token-autocomplete-shell {
+  position: relative;
+  flex: 1 1 180px;
+}
+.autocomplete-shell {
+  position: relative;
+}
+.autocomplete-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 8;
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  max-height: 220px;
+  overflow: auto;
+}
+.autocomplete-option {
+  min-height: 38px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  padding: 8px 10px;
+}
+.autocomplete-option.active,
+.autocomplete-option:hover {
+  background: var(--panel-2);
+}
 
 .btn {
   min-height: 44px;
@@ -412,10 +448,12 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   color: var(--muted);
   font-size: 12px;
 }
+.timeline-meta-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 .inline-edit {
-  position: absolute;
-  right: 8px;
-  bottom: 8px;
   display: inline-grid;
   place-items: center;
   width: 28px;
@@ -426,6 +464,12 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   color: var(--muted);
   font-size: 16px;
   cursor: pointer;
+}
+.inline-edit-top {
+  position: static;
+  width: 24px;
+  height: 24px;
+  font-size: 14px;
 }
 .inline-edit:hover {
   border-color: var(--line);

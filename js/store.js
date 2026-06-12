@@ -173,9 +173,14 @@ export async function saveContact(form) {
     email: form.email || "",
     phone: form.phone || "",
     isFavorite: Boolean(form.isFavorite),
+    isDefaultAuthor: Boolean(form.isDefaultAuthor),
     isActive: form.isActive !== false,
     notes: form.notes || ""
   };
+  if (contact.isDefaultAuthor) {
+    const siblings = state.contacts.filter((item) => item.projectId === contact.projectId && item.id !== contact.id && item.isDefaultAuthor);
+    await Promise.all(siblings.map((item) => put("contacts", { ...item, isDefaultAuthor: false })));
+  }
   await put("contacts", contact);
   const project = state.projects.find((item) => item.id === contact.projectId);
   if (project && !project.contacts.includes(contact.id)) {
@@ -252,6 +257,40 @@ export async function updateIncidentStatus(incidentId, status) {
   return incident;
 }
 
+export async function saveEvent(form, files = []) {
+  const incident = state.incidents.find((item) => item.id === form.incidentId);
+  if (!incident) return null;
+  const existing = form.id ? state.events.find((item) => item.id === form.id) : null;
+  if (existing) {
+    if (incident.status === "clos") return null;
+    if (!["update", "notification", "attachment"].includes(existing.kind)) return null;
+    const kind = form.kind || existing.kind;
+    if (!["update", "notification", "attachment"].includes(kind)) return null;
+    const author = form.author || existing.author || incident.declaredBy || "CHART";
+    const createdAt = form.createdAt ? new Date(form.createdAt).toISOString() : existing.createdAt;
+    const changed = eventChanged(existing, form, author, createdAt, kind);
+    const event = {
+      ...existing,
+      author,
+      kind,
+      createdAt,
+      message: form.message || existing.message,
+      modifiedAt: changed ? nowIso() : existing.modifiedAt || null,
+      modifiedBy: changed ? author : existing.modifiedBy || ""
+    };
+    await put("events", event);
+    if (files.length) {
+      const attachments = await addAttachments("event", event.id, files);
+      event.attachmentIds = [...new Set([...(existing.attachmentIds || []), ...attachments.map((attachment) => attachment.id)])];
+      await put("events", event);
+    }
+    await loadAll();
+    emit();
+    return event;
+  }
+  return addEvent(form, files);
+}
+
 export async function addEvent(form, files = []) {
   const incident = state.incidents.find((item) => item.id === form.incidentId);
   if (!incident) return null;
@@ -297,6 +336,7 @@ export async function saveCheckpoint(form, freeze = false, files = []) {
     scheduledAt: nextScheduledAt,
     heldAt: nextHeldAt,
     mode: form.mode || "visio",
+    author: form.author || existing?.author || incident.declaredBy || "CHART",
     invitedContactIds: toArray(form.invitedContactIds),
     invitedExternal: splitList(form.invitedExternal, []),
     presentContactIds: toArray(form.presentContactIds),
@@ -312,7 +352,8 @@ export async function saveCheckpoint(form, freeze = false, files = []) {
     notifiedContacts: toArray(form.notifiedContacts),
     createdAt: existing?.createdAt || nowIso(),
     updatedAt: nowIso(),
-    modifiedAt: changed ? nowIso() : existing?.modifiedAt || null
+    modifiedAt: changed ? nowIso() : existing?.modifiedAt || null,
+    modifiedBy: changed ? (form.author || existing?.author || incident.declaredBy || "CHART") : existing?.modifiedBy || ""
   };
   incident.checkpointIds = [...new Set([...(incident.checkpointIds || []), checkpoint.id])];
   incident.nextCheckpointAt = checkpoint.nextCheckpointAt || incident.nextCheckpointAt;
@@ -499,9 +540,19 @@ function checkpointChanged(existing, form, freeze, nextScheduledAt, nextHeldAt) 
     existing.scheduledAt !== nextScheduledAt,
     (existing.heldAt || null) !== (nextHeldAt || null),
     existing.mode !== (form.mode || "visio"),
+    (existing.author || form.author || "") !== (form.author || existing.author || ""),
     existing.situationSummary !== (form.situationSummary || ""),
     existing.doneSinceLastCheckpoint !== (form.doneSinceLastCheckpoint || ""),
     existing.remainingActions !== (form.remainingActions || ""),
     existing.blockersRisks !== (form.blockersRisks || "")
+  ].some(Boolean);
+}
+
+function eventChanged(existing, form, author, createdAt, kind) {
+  return [
+    existing.author !== author,
+    existing.createdAt !== createdAt,
+    existing.kind !== kind,
+    existing.message !== (form.message || existing.message)
   ].some(Boolean);
 }

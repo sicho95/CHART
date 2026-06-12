@@ -124,9 +124,9 @@ export function makeSeedData() {
     archived: false
   };
   const contacts = [
-    { id: "contact_moa", projectId: project.id, fullName: "Claire Martin", roleLabel: "Responsable MOA", group: "moa", organization: "Direction métier", email: "claire.martin@example.fr", phone: "+33600000001", isFavorite: true, isActive: true, notes: "Point de contact métier" },
-    { id: "contact_ops", projectId: project.id, fullName: "Nicolas Bernard", roleLabel: "Pilote exploitation", group: "exploitation", organization: "Opérations", email: "nicolas.bernard@example.fr", phone: "+33600000002", isFavorite: true, isActive: true, notes: "" },
-    { id: "contact_indus", projectId: project.id, fullName: "Sarah Lopez", roleLabel: "Référente industriel", group: "industriel", organization: "Prestataire", email: "sarah.lopez@example.fr", phone: "+33600000003", isFavorite: false, isActive: true, notes: "" }
+    { id: "contact_moa", projectId: project.id, fullName: "Claire Martin", roleLabel: "Responsable MOA", group: "moa", organization: "Direction métier", email: "claire.martin@example.fr", phone: "+33600000001", isFavorite: true, isDefaultAuthor: false, isActive: true, notes: "Point de contact métier" },
+    { id: "contact_ops", projectId: project.id, fullName: "Nicolas Bernard", roleLabel: "Pilote exploitation", group: "exploitation", organization: "Opérations", email: "nicolas.bernard@example.fr", phone: "+33600000002", isFavorite: true, isDefaultAuthor: true, isActive: true, notes: "" },
+    { id: "contact_indus", projectId: project.id, fullName: "Sarah Lopez", roleLabel: "Référente industriel", group: "industriel", organization: "Prestataire", email: "sarah.lopez@example.fr", phone: "+33600000003", isFavorite: false, isDefaultAuthor: false, isActive: true, notes: "" }
   ];
   const incident = {
     id: "inc_sso_001",
@@ -294,7 +294,8 @@ function kindLabel(kind) {
     notification: "Notification",
     checkpoint_frozen: "Point figé",
     closure: "Clôture",
-    attachment: "Pièce jointe"
+    attachment: "Pièce jointe",
+    reopen: "Réouverture"
   }[kind] || kind;
 }
 

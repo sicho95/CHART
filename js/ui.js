@@ -12,6 +12,7 @@ import {
   resetWithSeed,
   saveCheckpoint,
   saveContact,
+  saveEvent,
   saveProject,
   selectIncident,
   selectProject,
@@ -204,10 +205,18 @@ function timelineEntryItem(entry) {
 
 function timelineItem(event) {
   const attachments = state.attachments.filter((attachment) => attachment.ownerId === event.id);
+  const incident = state.incidents.find((item) => item.id === event.incidentId);
+  const canEdit = incident?.status !== "clos" && ["update", "notification", "attachment"].includes(event.kind);
   return `<article class="timeline-item">
-    <div class="card-top"><strong>${escapeHtml(kindLabel(event.kind))}</strong><span class="card-meta">${formatDate(event.createdAt)}</span></div>
+    <div class="card-top">
+      <strong>${escapeHtml(kindLabel(event.kind))}</strong>
+      <div class="timeline-meta-actions">
+        <span class="card-meta">${formatDate(event.createdAt)}</span>
+        ${canEdit ? `<button class="inline-edit inline-edit-top" data-action="event-edit" data-incident="${event.incidentId}" data-event="${event.id}" title="Modifier le jalon">✎</button>` : ""}
+      </div>
+    </div>
     <div>${escapeHtml(event.message)}</div>
-    <div class="card-meta">${escapeHtml(event.author || "CHART")}</div>
+    <div class="card-meta">${escapeHtml(event.author || "CHART")}${event.modifiedAt ? ` · <em>modifié le ${formatDate(event.modifiedAt)} par ${escapeHtml(event.modifiedBy || event.author || "CHART")}</em>` : ""}</div>
     ${attachments.length ? `<div class="context-attachments">${attachments.map(contextAttachmentChip).join("")}</div>` : ""}
   </article>`;
 }
@@ -219,12 +228,14 @@ function checkpointTimelineItem(checkpoint) {
   return `<article class="timeline-item checkpoint-timeline-item">
     <div class="card-top">
       <strong>Point figé</strong>
-      <span class="card-meta">${formatDate(checkpoint.heldAt || checkpoint.scheduledAt)}</span>
+      <div class="timeline-meta-actions">
+        <span class="card-meta">${formatDate(checkpoint.heldAt || checkpoint.scheduledAt)}</span>
+        ${canEdit ? `<button class="inline-edit inline-edit-top" data-action="checkpoint-edit" data-incident="${checkpoint.incidentId}" data-checkpoint="${checkpoint.id}" title="Modifier le point">✎</button>` : ""}
+      </div>
     </div>
     <div>${escapeHtml(checkpoint.situationSummary || "Point sans synthèse")}</div>
-    <div class="card-meta">${escapeHtml(checkpoint.mode || "Point")}${checkpoint.modifiedAt ? ` · <em>modifié le ${formatDate(checkpoint.modifiedAt)}</em>` : ""}</div>
+    <div class="card-meta">${escapeHtml(checkpoint.mode || "Point")}${checkpoint.author ? ` · ${escapeHtml(checkpoint.author)}` : ""}${checkpoint.modifiedAt ? ` · <em>modifié le ${formatDate(checkpoint.modifiedAt)} par ${escapeHtml(checkpoint.modifiedBy || checkpoint.author || "CHART")}</em>` : ""}</div>
     ${attachments.length ? `<div class="context-attachments">${attachments.map(contextAttachmentChip).join("")}</div>` : ""}
-    ${canEdit ? `<button class="inline-edit" data-action="checkpoint-edit" data-incident="${checkpoint.incidentId}" data-checkpoint="${checkpoint.id}" title="Modifier le point">✎</button>` : ""}
   </article>`;
 }
 
@@ -317,7 +328,7 @@ function projectsPage() {
 
 function contactCard(contact) {
   return `<article class="incident-card">
-    <div class="card-top"><strong>${escapeHtml(contact.fullName)}</strong><span class="badge">${escapeHtml(contact.group || "groupe")}</span></div>
+    <div class="card-top"><strong>${escapeHtml(contact.fullName)}</strong><span class="badge">${escapeHtml(contact.isDefaultAuthor ? "auteur par défaut" : (contact.group || "groupe"))}</span></div>
     <div class="card-meta">${escapeHtml(contact.roleLabel)} · ${escapeHtml(contact.organization)}</div>
     <div class="card-meta">${escapeHtml(contact.email)} ${escapeHtml(contact.phone)}</div>
     <div class="detail-actions">
@@ -383,6 +394,7 @@ function handleAction(button) {
   if (action === "theme") return setTheme(state.theme === "dark" ? "light" : "dark");
   if (action === "new-incident") return openIncidentModal();
   if (action === "event") return openEventModal(button.dataset.incident);
+  if (action === "event-edit") return openEventModal(button.dataset.incident, button.dataset.event);
   if (action === "checkpoint") return openCheckpointModal(button.dataset.incident);
   if (action === "checkpoint-edit") return openCheckpointModal(button.dataset.incident, button.dataset.checkpoint);
   if (action === "notify") return openNotifyModal(button.dataset.incident);
@@ -409,10 +421,11 @@ function openIncidentModal() {
 }
 
 function incidentForm(project) {
+  const people = knownProjectPeople(project?.id);
   return `<form class="form-grid">
     ${field("projectId", "Projet", selectOptions(state.projects.map((item) => [item.id, item.name]), project?.id), "select")}
     ${field("title", "Titre", "", "text", true)}
-    ${field("declaredBy", "Déclarant", "", "text", true)}
+    ${autocompleteField("declaredBy", "Déclarant", defaultAuthorNameForProject(project?.id), people, true)}
     ${field("declaredAt", "Date / heure", localDateValue(new Date()), "datetime-local", true)}
     ${field("type", "Type", selectOptions((project?.incidentTypes || DEFAULT_TYPES).map((item) => [item, item])), "select")}
     ${field("severity", "Gravité", selectOptions((project?.severityLevels || DEFAULT_SEVERITIES).map((item) => [item, item])), "select")}
@@ -433,19 +446,22 @@ function incidentForm(project) {
   </form>`;
 }
 
-function openEventModal(incidentId) {
+function openEventModal(incidentId, eventId = "") {
   const incident = state.incidents.find((item) => item.id === incidentId);
-  openModal("Ajouter un événement", `<form class="form-grid">
+  const event = eventId ? state.events.find((item) => item.id === eventId) : null;
+  const people = knownProjectPeople(incident?.projectId);
+  openModal(event ? "Modifier le jalon" : "Ajouter un événement", `<form class="form-grid">
+    <input type="hidden" name="id" value="${event?.id || ""}">
     <input type="hidden" name="incidentId" value="${incidentId}">
-    ${field("author", "Auteur", incident?.declaredBy || "CHART")}
-    ${field("kind", "Type", selectOptions([["update", "Mise à jour"], ["notification", "Notification"], ["attachment", "Pièce jointe"]]), "select")}
-    ${field("createdAt", "Date / heure", localDateValue(new Date()), "datetime-local")}
-    ${field("message", "Message", "", "textarea", true, "wide")}
+    ${autocompleteField("author", "Auteur", event?.author || defaultAuthorNameForProject(incident?.projectId) || incident?.declaredBy || "CHART", people, true)}
+    ${field("kind", "Type", selectOptions([["update", "Mise à jour"], ["notification", "Notification"], ["attachment", "Pièce jointe"]], event?.kind || "update"), "select")}
+    ${field("createdAt", "Date / heure", localDateValue(event?.createdAt || new Date()), "datetime-local")}
+    ${field("message", "Message", event?.message || "", "textarea", true, "wide")}
     <div class="field wide"><label>Pièces jointes</label><input class="input" type="file" name="attachments" multiple></div>
   </form>`, async (form, modal) => {
-    await addEvent(values(form), [...form.querySelector("[name='attachments']").files]);
+    await saveEvent(values(form), [...form.querySelector("[name='attachments']").files]);
     closeModal(modal);
-    showToast("Événement ajouté.");
+    showToast(event ? "Jalon modifié." : "Événement ajouté.");
   });
 }
 
@@ -453,7 +469,7 @@ function openCheckpointModal(incidentId, checkpointId = "") {
   const incident = state.incidents.find((item) => item.id === incidentId);
   const checkpoint = checkpointId ? state.checkpoints.find((item) => item.id === checkpointId) : null;
   const contacts = contactsForProject(incident?.projectId);
-  const suggestions = projectExternalParticipants(incident?.projectId);
+  const suggestions = knownProjectPeople(incident?.projectId);
   const isFrozen = checkpoint?.status === "frozen";
   openModal(checkpoint ? "Modifier le point" : "Point intermédiaire", `<form class="form-grid">
     <input type="hidden" name="id" value="${checkpoint?.id || ""}">
@@ -461,6 +477,7 @@ function openCheckpointModal(incidentId, checkpointId = "") {
     ${field("scheduledAt", "Date prévue", localDateValue(checkpoint?.scheduledAt || new Date()), "datetime-local")}
     ${field("heldAt", "Date tenue", localDateValue(checkpoint?.heldAt || ""), "datetime-local")}
     ${field("mode", "Modalité", selectOptions([["visio", "Visio"], ["téléphone", "Téléphone"], ["présentiel", "Présentiel"]], checkpoint?.mode || "visio"), "select")}
+    ${autocompleteField("author", "Auteur", checkpoint?.author || defaultAuthorNameForProject(incident?.projectId) || incident?.declaredBy || "CHART", suggestions, true, "wide")}
     <div class="field wide">
       <label>Invités projet</label>
       ${checks("invitedContactIds", contacts.map((item) => [item.id, item.fullName]), checkpoint?.invitedContactIds || [])}
@@ -494,10 +511,11 @@ function openCheckpointModal(incidentId, checkpointId = "") {
 function openNotifyModal(incidentId) {
   const incident = state.incidents.find((item) => item.id === incidentId);
   const contacts = contactsForProject(incident?.projectId);
+  const people = knownProjectPeople(incident?.projectId);
   openModal("Marquer avertis", `<form class="form-grid">
     <input type="hidden" name="incidentId" value="${incidentId}">
     <input type="hidden" name="kind" value="notification">
-    ${field("author", "Auteur", "CHART")}
+    ${autocompleteField("author", "Auteur", defaultAuthorNameForProject(incident?.projectId) || incident?.declaredBy || "CHART", people, true)}
     <div class="field wide"><label>Personnes averties</label>${checks("contacts", contacts.map((item) => [item.id, item.fullName]))}</div>
     ${field("message", "Message", "Parties prenantes averties.", "textarea", true, "wide")}
   </form>`, async (form, modal) => {
@@ -526,9 +544,10 @@ function openClosureModal(incidentId) {
 }
 
 function openReopenModal(incidentId) {
+  const incident = state.incidents.find((item) => item.id === incidentId);
   openModal("Réouvrir l'incident", `<form class="form-grid">
     <input type="hidden" name="incidentId" value="${incidentId}">
-    ${field("author", "Auteur", "CHART")}
+    ${autocompleteField("author", "Auteur", defaultAuthorNameForProject(incident?.projectId) || incident?.declaredBy || "CHART", knownProjectPeople(incident?.projectId), true)}
     ${field("reason", "Motif de réouverture", "", "textarea", true, "wide")}
   </form>`, async (form, modal) => {
     await reopenIncident(values(form));
@@ -559,16 +578,18 @@ function openProjectModal(projectId) {
 
 function openContactModal(projectId, contactId = "") {
   const contact = contactId ? contactById(contactId) : null;
+  const people = knownProjectPeople(projectId);
   openModal(contact ? "Modifier contact" : "Nouveau contact", `<form class="form-grid">
     <input type="hidden" name="id" value="${contact?.id || ""}">
     <input type="hidden" name="projectId" value="${projectId}">
-    ${field("fullName", "Nom complet", contact?.fullName || "", "text", true)}
+    ${autocompleteField("fullName", "Nom complet", contact?.fullName || "", people, true)}
     ${field("roleLabel", "Rôle", contact?.roleLabel || "")}
     ${field("group", "Groupe", contact?.group || "")}
     ${field("organization", "Organisation", contact?.organization || "")}
     ${field("email", "Email", contact?.email || "", "email")}
     ${field("phone", "Téléphone", contact?.phone || "")}
     <label class="check-item"><input type="checkbox" name="isFavorite" ${contact?.isFavorite ? "checked" : ""}> Favori</label>
+    <label class="check-item"><input type="checkbox" name="isDefaultAuthor" ${contact?.isDefaultAuthor ? "checked" : ""}> Auteur par défaut</label>
     <label class="check-item"><input type="checkbox" name="isActive" ${contact?.isActive !== false ? "checked" : ""}> Actif</label>
     ${field("notes", "Notes", contact?.notes || "", "textarea", false, "wide")}
   </form>`, async (form, modal) => {
@@ -599,6 +620,7 @@ function openModal(title, content, onSubmit, buttons, extraClass = "") {
   document.body.appendChild(modal);
   modal.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => closeModal(modal)));
   modal.addEventListener("click", (event) => { if (event.target === modal) closeModal(modal); });
+  activateAutocompleteFields(modal);
   activateTokenFields(modal);
   activateColorFields(modal);
   modal.querySelectorAll("[type='submit']").forEach((button) => button.addEventListener("click", async () => {
@@ -661,6 +683,16 @@ function selectFilter(name, placeholder, allLabel, options) {
   </div>`;
 }
 
+function autocompleteField(name, label, value = "", suggestions = [], required = false, extraClass = "") {
+  return `<div class="field ${extraClass}">
+    <label for="${name}">${label}</label>
+    <div class="autocomplete-shell" data-autocomplete-values="${escapeHtml(JSON.stringify(suggestions || []))}">
+      <input class="input" id="${name}" name="${name}" type="text" value="${escapeHtml(value)}" ${required ? "required" : ""} autocomplete="off" data-autocomplete-input>
+      <div class="autocomplete-menu" data-autocomplete-menu hidden></div>
+    </div>
+  </div>`;
+}
+
 function field(name, label, value = "", type = "text", required = false, extraClass = "") {
   if (type === "textarea") return `<div class="field ${extraClass}"><label for="${name}">${label}</label><textarea class="textarea" id="${name}" name="${name}" ${required ? "required" : ""}>${escapeHtml(value)}</textarea></div>`;
   if (type === "select") return `<div class="field ${extraClass}"><label for="${name}">${label}</label><select class="select" id="${name}" name="${name}" ${required ? "required" : ""}>${value}</select></div>`;
@@ -679,15 +711,16 @@ function colorField(value) {
 }
 
 function tokenField(name, label, values, suggestions) {
-  const listId = `${name}_${Math.random().toString(36).slice(2, 8)}`;
   return `<div class="token-field" data-token-field>
     <span class="token-label">${escapeHtml(label)}</span>
     <div class="token-box" data-token-box>
       <div class="token-list" data-token-list></div>
-      <input class="token-input" type="text" data-token-input list="${listId}" placeholder="Ajouter puis Entrée">
+      <div class="autocomplete-shell token-autocomplete-shell" data-autocomplete-values="${escapeHtml(JSON.stringify(suggestions || []))}" data-token-autocomplete="true">
+        <input class="token-input" type="text" data-token-input data-autocomplete-input autocomplete="off" placeholder="Ajouter puis Entrée">
+        <div class="autocomplete-menu" data-autocomplete-menu hidden></div>
+      </div>
     </div>
     <input type="hidden" name="${name}" value="${escapeHtml((values || []).join(", "))}">
-    <datalist id="${listId}">${(suggestions || []).map((item) => `<option value="${escapeHtml(item)}"></option>`).join("")}</datalist>
   </div>`;
 }
 
@@ -729,14 +762,17 @@ function activateTokenFields(container) {
       }));
     };
 
-    const pushToken = () => {
-      const value = input.value.trim();
+    const pushToken = (nextValue = input.value.trim()) => {
+      const value = nextValue.trim();
       if (!value || tokens.includes(value)) return;
       tokens.push(value);
       input.value = "";
       renderTokens();
     };
 
+    input.addEventListener("autocomplete-select", (event) => {
+      pushToken(event.detail.value);
+    });
     input.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === ",") {
         event.preventDefault();
@@ -749,6 +785,82 @@ function activateTokenFields(container) {
     });
     input.addEventListener("blur", pushToken);
     renderTokens();
+  });
+}
+
+function activateAutocompleteFields(container) {
+  container.querySelectorAll("[data-autocomplete-input]").forEach((input) => {
+    const shell = input.closest(".autocomplete-shell");
+    const menu = shell?.querySelector("[data-autocomplete-menu]");
+    if (!shell || !menu) return;
+    const rawValues = JSON.parse(shell.dataset.autocompleteValues || "[]");
+    const getPool = () => {
+      const used = shell.dataset.tokenAutocomplete === "true"
+        ? new Set(splitCsv(shell.closest("[data-token-field]")?.querySelector("input[type='hidden']")?.value))
+        : new Set();
+      return [...new Set(rawValues)].filter((value) => value && !used.has(value));
+    };
+    let matches = [];
+    let activeIndex = -1;
+
+    const closeMenu = () => {
+      menu.hidden = true;
+      menu.innerHTML = "";
+      matches = [];
+      activeIndex = -1;
+    };
+
+    const chooseValue = (value) => {
+      input.value = value;
+      if (shell.dataset.tokenAutocomplete === "true") {
+        input.dispatchEvent(new CustomEvent("autocomplete-select", { detail: { value } }));
+      }
+      closeMenu();
+    };
+
+    const renderMenu = () => {
+      const query = input.value.trim().toLowerCase();
+      matches = getPool()
+        .filter((value) => !query || value.toLowerCase().includes(query))
+        .slice(0, 7);
+      if (!matches.length) return closeMenu();
+      menu.hidden = false;
+      menu.innerHTML = matches.map((value, index) => `<button type="button" class="autocomplete-option ${index === activeIndex ? "active" : ""}" data-autocomplete-option="${escapeHtml(value)}">${escapeHtml(value)}</button>`).join("");
+      menu.querySelectorAll("[data-autocomplete-option]").forEach((button, index) => {
+        button.addEventListener("mousedown", (event) => {
+          event.preventDefault();
+          activeIndex = index;
+          chooseValue(button.dataset.autocompleteOption);
+        });
+      });
+    };
+
+    input.addEventListener("focus", renderMenu);
+    input.addEventListener("input", () => {
+      activeIndex = -1;
+      renderMenu();
+    });
+    input.addEventListener("keydown", (event) => {
+      if (!matches.length && !["ArrowDown", "ArrowUp"].includes(event.key)) return;
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        activeIndex = Math.min(activeIndex + 1, matches.length - 1);
+        renderMenu();
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        activeIndex = Math.max(activeIndex - 1, 0);
+        renderMenu();
+      }
+      if (event.key === "Enter" || event.key === "Tab") {
+        if (matches.length === 1 || activeIndex >= 0) {
+          event.preventDefault();
+          chooseValue(matches[activeIndex >= 0 ? activeIndex : 0]);
+        }
+      }
+      if (event.key === "Escape") closeMenu();
+    });
+    input.addEventListener("blur", () => setTimeout(closeMenu, 120));
   });
 }
 
@@ -795,7 +907,8 @@ function kindLabel(kind) {
     notification: "Notification",
     checkpoint_frozen: "Point figé",
     closure: "Clôture",
-    attachment: "Pièce jointe"
+    attachment: "Pièce jointe",
+    reopen: "Réouverture"
   }[kind] || kind;
 }
 
@@ -853,6 +966,39 @@ function projectExternalParticipants(projectId) {
       .flatMap((checkpoint) => [...(checkpoint.invitedExternal || []), ...(checkpoint.presentExternal || [])])
       .filter(Boolean)
   )].sort((a, b) => a.localeCompare(b));
+}
+
+function defaultAuthorNameForProject(projectId) {
+  return contactsForProject(projectId).find((contact) => contact.isDefaultAuthor)?.fullName || "";
+}
+
+function knownProjectPeople(projectId) {
+  const names = new Set();
+  contactsForProject(projectId, false).forEach((contact) => {
+    if (contact.fullName) names.add(contact.fullName);
+  });
+  state.incidents
+    .filter((incident) => incident.projectId === projectId)
+    .forEach((incident) => {
+      if (incident.declaredBy) names.add(incident.declaredBy);
+    });
+  state.events
+    .filter((event) => event.projectId === projectId)
+    .forEach((event) => {
+      if (event.author) names.add(event.author);
+      if (event.modifiedBy) names.add(event.modifiedBy);
+    });
+  state.checkpoints
+    .filter((checkpoint) => checkpoint.projectId === projectId)
+    .forEach((checkpoint) => {
+      if (checkpoint.author) names.add(checkpoint.author);
+      if (checkpoint.modifiedBy) names.add(checkpoint.modifiedBy);
+      [...(checkpoint.invitedExternal || []), ...(checkpoint.presentExternal || [])].forEach((name) => name && names.add(name));
+      (checkpoint.decisionsTaken || []).forEach((item) => item.owner && names.add(item.owner));
+      (checkpoint.decisionsToTake || []).forEach((item) => item.owner && names.add(item.owner));
+      (checkpoint.actions || []).forEach((item) => item.owner && names.add(item.owner));
+    });
+  return [...names].sort((a, b) => a.localeCompare(b));
 }
 
 function empty(text) {
